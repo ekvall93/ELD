@@ -6,6 +6,11 @@ import torch.nn.functional as F
 import elasticdeform
 import numpy as np
 import ipdb
+import random 
+import torchvision
+
+from model import UniModal, MultiModal, Model3D
+
 ################################### - classes 
 
 colors = [(255, 0, 0),
@@ -136,9 +141,7 @@ def process_image(image,angle=0, flip=False, sigma=1,size=128, tight=16, hmsize=
         output['M'] = M
         #tight = int(tight + 4*np.random.randn())
     image = crop( image, size, tight )
-    #if flip:
-    #    image = cv2.flip(image, 1)
-            
+
     image = image.clip(0,1)
     image = torch.from_numpy(image.swapaxes(2,1).swapaxes(1,0))
     output['image'] = image.type_as(torch.FloatTensor())
@@ -147,114 +150,6 @@ def process_image(image,angle=0, flip=False, sigma=1,size=128, tight=16, hmsize=
     
 
     return output
-
-import random 
-
-import torchvision
-
-""" noise = albumentations.Compose([
-          
-        ]) """
-""" def process_image_elastic(image,angle=0, flip=False, sigma=1,size=128, tight=16, hmsize=64, elastic_simga=5, rot_img=False):
-    output = dict.fromkeys(['image','image_rot', 'image_deformed','points','M'])
-
-    image = image/255.0
-
-
-
-    
-
-    #8 works, but regenerated image looks bad good landmarks
-
-    if elastic_simga > 0.1:
-        _deformed_image = elasticdeform.deform_random_grid(image, axis=(0,1),sigma=elastic_simga * random.uniform(0,1), points=random.randint(3,6), cval=0)
-        _deformed_image_x = elasticdeform.deform_random_grid(image, axis=(0,1),sigma=elastic_simga * random.uniform(0,1), points=random.randint(3,6), cval=0)
-    else:
-        _deformed_image = image.copy()
-        _deformed_image_x = image.copy()
-
-
-
-    deformed_image = np.zeros((size + 4, size + 4, 3))
-    deformed_image[1:(size + 3), 1:(size + 3)] = _deformed_image.copy()
-
-    
-    deformed_image2 = np.zeros((size + 4, size + 4, 3))
-    deformed_image2[1:(size + 3), 1:(size + 3)] = _deformed_image.copy()
-
-    deformed_image3 = np.zeros((size + 4, size + 4, 3))
-    deformed_image3[1:(size + 3), 1:(size + 3)] = _deformed_image_x.copy()
-
-    
-    if angle > 0:
-        ### Image1
-        tmp_angle = np.clip(np.random.randn(1) * angle, -40.0, 40.0)
-        deformed_image, M = affine_trans(deformed_image, tmp_angle)
-        output['M'] = M
-
-        
-        deformed_image3, M = affine_trans(deformed_image3, tmp_angle)
-        
-
-
-
-        tmp_angle = np.clip(np.random.randn(1) * angle, -40.0, 40.0)
-        deformed_image2, M = affine_trans(deformed_image2, tmp_angle)
-
-    tight = int(tight + 4*np.random.randn())
-    deformed_image = crop( deformed_image, size, tight )
-
-    deformed_image3 = crop( deformed_image3, size, tight )
-    
-    tight = int(tight + 4*np.random.randn())
-    deformed_image2 = crop( deformed_image2, size, tight )
-
-    if flip:
-        image = cv2.flip(image, 1)
-
-
-    deformed_image_n = noise(image=deformed_image)['image']
-    deformed_image3_n = noise(image=deformed_image3)['image']
-    deformed_image2_n = noise(image=deformed_image2)['image']
-
-    #deformed_image_n = deformed_image
-    #deformed_image3_n = deformed_image3
-    #deformed_image2_n = deformed_image2
-
-    #ipdb.set_trace()
-
-    deformed_image = deformed_image.clip(0,1)
-    deformed_image = torch.from_numpy(deformed_image.swapaxes(2,1).swapaxes(1,0))
-    output['image'] = deformed_image.type_as(torch.FloatTensor())
-
-    deformed_image3 = deformed_image3.clip(0,1)
-    deformed_image3 = torch.from_numpy(deformed_image3.swapaxes(2,1).swapaxes(1,0))
-    output['image_deformed'] = deformed_image3.type_as(torch.FloatTensor())
-
-    
-    deformed_image2 = deformed_image2.clip(0,1)
-    deformed_image2 = torch.from_numpy(deformed_image2.swapaxes(2,1).swapaxes(1,0))
-    output['image_rot'] = deformed_image2.type_as(torch.FloatTensor())
-    
-
-    #///////
-
-    deformed_image = deformed_image_n.clip(0,1)
-    deformed_image = torch.from_numpy(deformed_image.swapaxes(2,1).swapaxes(1,0))
-    output['image_n'] = deformed_image.type_as(torch.FloatTensor())
-
-    deformed_image3 = deformed_image3_n.clip(0,1)
-    deformed_image3 = torch.from_numpy(deformed_image3.swapaxes(2,1).swapaxes(1,0))
-    output['image_deformed_n'] = deformed_image3.type_as(torch.FloatTensor())
-
-    
-    deformed_image2 = deformed_image2_n.clip(0,1)
-    deformed_image2 = torch.from_numpy(deformed_image2.swapaxes(2,1).swapaxes(1,0))
-    output['image_rot_n'] = deformed_image2.type_as(torch.FloatTensor())
-    
-
-    return output """
-
 
 def padImg(img, pad):
     old_image_height, old_image_width, channels = img.shape
@@ -281,22 +176,7 @@ def padImg(img, pad):
 def process_image_elastic(image,angle=0, flip=False, sigma=1,size=128, tight=16, hmsize=64, elastic_simga=5, rot_img=False):
     output = dict.fromkeys(['image','image_rot', 'image_deformed','points','M'])
 
-
-    #image = padImg(image, random.randint(0,50))
-
-
     image = image/255.0
-
-
-
-    
-    
-    #8 works, but regenerated image looks bad good landmarks
-
-    #add 30 by 30 padding to the images to avoid edge effects
-    #image = cv2.copyMakeBorder(image, 15, 15, 15, 15, cv2.BORDER_CONSTANT, value=[0,0,0])
-
-
 
     if elastic_simga > 0.1:
         #get random number between 0 and 4
@@ -314,7 +194,6 @@ def process_image_elastic(image,angle=0, flip=False, sigma=1,size=128, tight=16,
     deformed_image = np.zeros((size + 4, size + 4, n))
     deformed_image[1:(size + 3), 1:(size + 3)] = _deformed_image_x.copy()
 
-    
     deformed_image2 = np.zeros((size + 4, size + 4, n))
     deformed_image2[1:(size + 3), 1:(size + 3)] = _deformed_image.copy()
 
@@ -335,28 +214,8 @@ def process_image_elastic(image,angle=0, flip=False, sigma=1,size=128, tight=16,
         deformed_image3, M = affine_trans(deformed_image3, -1 * tmp_angle)
 
 
-        
-        #deformed_image2 = padImg(deformed_image2, random.randint(0,30))
-        #deformed_image3 = padImg(deformed_image3, random.randint(0,30))
-
-
-        """ tight = int(tight + 4*np.random.randn())
-        deformed_image = crop( deformed_image, size, tight )
-
-        deformed_image3 = crop( deformed_image3, size, tight )
-        
-        #tight = int(tight + 4*np.random.randn())
-        deformed_image2 = crop( deformed_image2, size, tight ) """
-
-
     if flip:
         image = cv2.flip(image, 1)
-
-
-    #deformed_image_n = noise(image=deformed_image)['image']
-    #deformed_image3_n = noise(image=deformed_image3)['image']
-    #deformed_image2_n = noise(image=deformed_image2)['image']
-
 
     deformed_image = deformed_image.clip(0,1)
     deformed_image = torch.from_numpy(deformed_image.swapaxes(2,1).swapaxes(1,0))
@@ -369,21 +228,6 @@ def process_image_elastic(image,angle=0, flip=False, sigma=1,size=128, tight=16,
     deformed_image3 = deformed_image3.clip(0,1)
     deformed_image3 = torch.from_numpy(deformed_image3.swapaxes(2,1).swapaxes(1,0))
     output['image_deformed'] = deformed_image3.type_as(torch.FloatTensor())
-    
-
-    #///////
-
-    """ deformed_image = deformed_image_n.clip(0,1)
-    deformed_image = torch.from_numpy(deformed_image.swapaxes(2,1).swapaxes(1,0))
-    output['image_n'] = deformed_image.type_as(torch.FloatTensor())
-
-    deformed_image2 = deformed_image2_n.clip(0,1)
-    deformed_image2 = torch.from_numpy(deformed_image2.swapaxes(2,1).swapaxes(1,0))
-    output['image_rot_n'] = deformed_image2.type_as(torch.FloatTensor())
-
-    deformed_image3 = deformed_image3_n.clip(0,1)
-    deformed_image3 = torch.from_numpy(deformed_image3.swapaxes(2,1).swapaxes(1,0))
-    output['image_deformed_n'] = deformed_image3.type_as(torch.FloatTensor()) """
     
 
     return output
@@ -517,3 +361,54 @@ def savetorchimgandptsv2(name,img,x,thick=2,mSize=4): # to use different colours
     cv2.drawMarker(improc, (int(x[9,0]), int(x[9,1])), (0,0,128), markerType=cv2.MARKER_CROSS, markerSize=mSize, thickness=thick)       
     cv2.imwrite(name, cv2.cvtColor( improc , cv2.COLOR_RGB2BGR))
 
+
+class _RepeatSampler(object):
+    """ Sampler that repeats forever.
+
+    Args:
+        sampler (Sampler)
+    """
+    def __init__(self, sampler):
+        self.sampler = sampler
+
+    def __iter__(self):
+        while True:
+            yield from iter(self.sampler)
+
+
+class FastDataLoader(torch.utils.data.dataloader.DataLoader):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        object.__setattr__(self, 'batch_sampler', _RepeatSampler(self.batch_sampler))
+        self.iterator = super().__iter__()
+
+    def __len__(self):
+        return len(self.batch_sampler.sampler)
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield next(self.iterator)
+
+
+def getModel(model:str):
+    if model == "unimodal":
+        return UniModal
+    elif model == "multimodal":
+        return MultiModal
+    elif model == "3d":
+        return Model3D
+    else:
+        raise ValueError("Model's available are: 'unimodal', and 'multimodal'")
+
+#import pca
+from sklearn.decomposition import PCA
+class Reduce_IMG:
+    def __init__(self):
+        self.pca = None
+
+    def reduce_img(self, image):
+        #check if self.pca is not None
+        if self.pca is None:
+            #fit pca based on image and reduce to 3 dim
+            self.pca = PCA(n_components=3).fit(image.reshape(-1, image.shape[-1]))    
+        return self.pca.transform(image.reshape(-1, image.shape[-1])).reshape(image.shape[0], image.shape[1], 3)

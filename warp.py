@@ -3,9 +3,9 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-import ipdb
-from kornia.utils import create_meshgrid
 import torch.nn.functional as F
+from kornia.utils import create_meshgrid
+from kornia.geometry.transform import warp_affine
 
 class TPS:
     def __init__(self, warp_type):
@@ -48,11 +48,9 @@ class TPS:
         # f_{x|y}(v) = a_0 + [a_x a_y].v + \sum_i w_i * U(||v-u_i||)
         pair_distance: torch.Tensor = self._pair_square_euclidean(points_src, kernel_centers)
         b, d1, d2 = pair_distance.shape
-
-        #l = torch.cat([points_src, pair_distance],2)
+        
         k_matrix: torch.Tensor = self.kernel_distance(pair_distance)
 
-        
         if self.use_tps:
             warped: torch.Tensor = (
                 (k_matrix[..., None].mul(kernel_weights[:, None]).sum(-2) +
@@ -63,12 +61,10 @@ class TPS:
             warped: torch.Tensor = (
             points_src[..., None].mul(affine_weights[:, None, 1:]).sum(-2) +
             affine_weights[:, None, 0])
-        
 
-        
         return warped
 
-    def get_tps_transform(self, points_src: torch.Tensor, points_dst: torch.Tensor):
+    def get_tps_transform(self, points_src: torch.Tensor, points_dst: torch.Tensor, reg=0):
         r"""Compute the TPS transform parameters that warp source points to target points.
 
         The input to this function is a tensor of :math:`(x, y)` source points :math:`(B, N, 2)` and a corresponding
@@ -109,31 +105,29 @@ class TPS:
         # set up and solve linear system
         # [K   P] [w] = [dst]
         # [P^T 0] [a]   [ 0 ]
-        #pair_distance: torch.Tensor = self._pair_square_euclidean(points_src, points_dst)
         pair_distance: torch.Tensor = self._pair_square_euclidean(points_src, points_src)
-        #ipdb.set_trace()
         n_pts = points_src.size(1)
-        #print(n_pts)
         k_matrix = self.kernel_distance(pair_distance)
         mask = torch.linalg.matrix_rank(k_matrix) != n_pts
 
-        
+        k_matrix = k_matrix + torch.eye(n_pts,n_pts).cuda()[None].repeat(batch_size,1,1) * reg
+
         k_matrix[mask] = k_matrix[mask] + torch.eye(n_pts,n_pts).cuda()[None].repeat(sum(mask),1,1) * 0.001
+
+        
 
 
         zero_mat: torch.Tensor = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
         one_mat: torch.Tensor = torch.ones(batch_size, num_points, 1, device=device, dtype=dtype)
         dest_with_zeros: torch.Tensor = torch.cat((points_dst, zero_mat[:, :, :2]), 1)
         p_matrix: torch.Tensor = torch.cat((one_mat, points_src), -1)
-
-        
-
         p_matrix_t: torch.Tensor = torch.cat((p_matrix, zero_mat), 1).transpose(1, 2)
 
 
         l_matrix = torch.cat((k_matrix, p_matrix), -1)
         l_matrix = torch.cat((l_matrix, p_matrix_t), 1)
-        weights, _ = torch.solve(dest_with_zeros, l_matrix)
+        
+        weights = torch.linalg.solve(l_matrix, dest_with_zeros)
 
         if not self.use_tps:
             affine_weights = torch.linalg.pinv(p_matrix) @ points_dst
@@ -143,13 +137,8 @@ class TPS:
         rbf_weights = weights[:, :-3]
         affine_weights = weights[:, -3:]
 
-
-        
-
         return (rbf_weights, affine_weights)
-
-
-
+        
     def kernel_distance(self, squared_distances: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         loss = 0.5 * squared_distances * squared_distances.add(eps).log()
         return loss
@@ -291,50 +280,75 @@ class TPS:
         else:
             return src_pts / 63.5 - 1 , dts_pts / 63.5 - 1
 
-
     def unnormalize(self, pts):
         return (pts + 1) * 63.5
         
-       
-    def warp_img(self,img, src, dst, norm=True):
+    def warp_img(self,img, src, dst, reg=0, norm=True):
         if norm:
             src, dst = self.normalize(src, dst)
         src, dst = dst, src
-        rbf_w, aff_w = self.get_tps_transform(src, dst)
+        rbf_w, aff_w = self.get_tps_transform(src, dst, reg=reg)
         return self.warp_image_tps(img, src, rbf_w, aff_w)
 
-    def warp_pts(self, src, dst, pts_to_map, norm=True, up_norm=True):
+    def warp_pts(self, src, dst, pts_to_map, reg=0, norm=True, up_norm=True):
         if norm:
             src, dst, pts_to_map = self.normalize(src, dst, pts_to_map)
-        rbf_w, aff_w = self.get_tps_transform(src, dst)
+        rbf_w, aff_w = self.get_tps_transform(src, dst, reg=reg)
         warped_src: torch.Tensor = self.warp_points_tps(pts_to_map, src, rbf_w, aff_w) 
         if up_norm:
             warped_src = self.unnormalize(warped_src)
         return warped_src
 
-import kornia
+class Rigid:
+    def __init__(self):
+        pass
 
+    def find_rigid_alignment_batch(self, A, B):
+        """
+        See: https://en.wikipedia.org/wiki/Kabsch_algorithm
+        2-D or 3-D registration with known correspondences.
+        Registration occurs in the zero centered coordinate system, and then
+        must be transported back.
+        Args:
+        - A: Torch tensor of shape (batch_size, N,D) -- Point Cloud to Align (source)
+        - B: Torch tensor of shape (batch_size, N,D) -- Reference Point Cloud (target)
+        Returns:
+        - R: optimal rotation, shape (batch_size, D,D)
+        - t: optimal translation, shape (batch_size, D)
+        """
+        batch_size = A.shape[0]
+        a_mean = A.mean(axis=1)
+        b_mean = B.mean(axis=1)
+        A_c = A - a_mean[:,None,:]
+        B_c = B - b_mean[:,None,:]
+        # Covariance matrix
+        H = torch.bmm(A_c.transpose(1,2),B_c)
+        U, S, V = torch.svd(H)
+        # Rotation matrix
+        R = torch.bmm(V,U.transpose(1,2))
+        # Translation vector
+        t = b_mean[:,None,:] - torch.bmm(R, a_mean.unsqueeze(-1)).transpose(1,2)
 
-from kornia.geometry.conversions import normalize_homography
-from kornia.utils.helpers import _torch_inverse_cast
+        t = t.transpose(1,2)
+        
+        return R, t.squeeze(2)
 
-from kornia.geometry.linalg import transform_points
+    def warp_img(self,img, src, dst, dsize=(128,128)):
+        R_b,t_b = self.find_rigid_alignment_batch(src, dst)
+        M = torch.cat([R_b, t_b[:,:,None]], axis=2)
+        return warp_affine(img, M, dsize, mode='bilinear', padding_mode='zeros', align_corners=True)
+
+    def warp_pts(self, src, dst, pts_to_map):
+        R_b,t_b = self.find_rigid_alignment_batch(src, dst)
+        return torch.bmm(R_b, pts_to_map.transpose(1,2)).transpose(1,2) + t_b[:,None,:]
+    
+    def get_params(self, src, dst):
+        R_b,t_b = self.find_rigid_alignment_batch(src, dst)
+        return torch.cat([t_b[:,None,:], R_b], axis=1)
 
 class Homo:
     def __init__(self):
         pass 
-
-    """ def warp_pts(self,scr_pts, dst_pts, mapped_points, size=128):
-
-        B, H, W = 128, 128, 128
-        h_out, w_out = 128, 128
-
-        M = kornia.geometry.homography.find_homography_dlt(dst_pts, scr_pts)
-        dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M, (H, W), (h_out, w_out))  # Bx3x3
-        src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)  # Bx3x3
-        mapped_sample_pts = transform_points(src_norm_trans_dst_norm, mapped_points)
-        
-        return mapped_sample_pts """
 
     def warp_pts(self,scr_pts, dst_pts, mapped_points, size=128):
 
@@ -356,8 +370,8 @@ class WARP():
         assert warp_type in ["tps", "homo", "affine"], f"warp_type is wrong{warp_type}"
         self.warper = TPS(warp_type) if warp_type in ["tps", "affine"] else Homo()
 
-    def warp_img(self, img, scr_pts, dst_pts):
-        return self.warper.warp_img(img, scr_pts, dst_pts)
+    def warp_img(self, img, scr_pts, dst_pts, reg=0):
+        return self.warper.warp_img(img, scr_pts, dst_pts, reg=reg)
     
-    def warp_pts(self, src, dst, pts_to_map):
-        return self.warper.warp_pts(src, dst, pts_to_map)
+    def warp_pts(self, src, dst, pts_to_map, reg=0):
+        return self.warper.warp_pts(src, dst, pts_to_map, reg=reg)

@@ -37,10 +37,8 @@ class Options():
         self._parser.add_argument('-a', '--angle', default=15.0, type=float, help='rotation angle')
         self._parser.add_argument('--flip', default=False, help='Use flip or not')
         self._parser.add_argument('--cuda', default='auto', type=str, help='cuda')
-        self._parser.add_argument('--elastic', default=False, type=bool,help='Elastic transformation')
-        self._parser.add_argument('--hyper', default=False, type=bool, help='IMG or HYPER_IMG')
-        self._parser.add_argument('--model', default="Homo", help='Use flip or not')
-        self._parser.add_argument('--elastic_sigma', default=5, help='Elastic')
+        self._parser.add_argument('--model', default="unimodal")
+        self._parser.add_argument('--elastic_sigma', default=3, help='Elastic')
         self._parser.add_argument('--ws', default=5_000, help='ws')
         self._parser.add_argument('--n_genes', default=None)
 

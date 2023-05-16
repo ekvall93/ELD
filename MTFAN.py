@@ -3,8 +3,6 @@ from torch.nn.modules.conv import _ConvNd
 from utils import *
 from torch.nn.modules.utils import _single, _pair, _triple
 import inspect
-from torchgeometry.contrib import spatial_soft_argmax2d
-import kornia
 
 def normalize_grid(grid, l=128 / 2):
     return (grid - l) / l
@@ -238,24 +236,59 @@ class FAN(nn.Module):
 
 
         return out
+
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(ConvBlock, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.bn = nn.BatchNorm2d(out_channels)
         
-#from torchgeometry.contrib import spatial_soft_argmax2d
-#from kornia.geometry.subpix import spatial_soft_argmax2d
+    def forward(self, x):
+        x = F.relu(self.bn(self.conv(x)))
+        return x
 
+class MySequentialModel(nn.Module):
+    def __init__(self, in_channels):
+        super(MySequentialModel, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3)
+        self.bn1 = nn.BatchNorm2d(64)
+        
 
+    def forward(self, x):
+        activations = []
+        x = F.relu(self.bn1(self.conv1(x)))
+        return x
 
-class FAN_HYPER(nn.Module):
+class MultiModalFAN(nn.Module):
 
-    def __init__(self, num_modules=1, n_points=66):
-        super(FAN_HYPER, self).__init__()
+    def __init__(self, num_modules=1, n_points=66, in_channels=3):
+        super(MultiModalFAN, self).__init__()
         self.num_modules = num_modules
 
         # Base part
-        self.conv1 = nn.Conv2d(1000, 600, kernel_size=7, stride=2, padding=3)
-        self.bn1 = nn.BatchNorm2d(600)
-        self.conv2 = ConvBlock(600, 300)
-        self.conv3 = ConvBlock(300, 300)
-        self.conv4 = ConvBlock(300, 256)
+        self.modal1 = MySequentialModel(in_channels)
+        self.modal2 = MySequentialModel(in_channels)
+
+        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.conv2 = ConvBlock(64, 128)
+        self.avgpool = nn.AvgPool2d(kernel_size=2, stride=2)
+        self.conv3 = ConvBlock(128, 128)
+        self.conv4 = ConvBlock(128, 256)
+
+        #make torch.nn.Sequential that goes from n_points->64->32->3 channels, and increase the wxh 2x each time with transpose convolutions
+
+        self.up_sample = nn.Sequential(
+            nn.ConvTranspose2d(n_points, 64, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(64, 3, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(3),
+            nn.Tanh()
+        )
+
+        self.a = nn.ReLU()
 
         # Stacking part
         for hg_module in range(self.num_modules):
@@ -274,18 +307,46 @@ class FAN_HYPER(nn.Module):
                                                                  256, kernel_size=1, stride=1, padding=0))
 
 
-    def forward(self, x):
+    def forward(self, x, mod_mask):
 
         is_list = isinstance(x, tuple) or isinstance(x, list)
         if is_list:
             batch_dim = x[0].shape[0]
             x = torch.cat(x, dim=0)
 
+
         
-        x = F.relu(self.bn1(self.conv1(x)), True)
-        x = F.avg_pool2d(self.conv2(x), 2, stride=2)
+        true_inputs = x[mod_mask]
+        false_inputs = x[~mod_mask]
+
+        activations = []
+
+        # Run the models in parallel
+        true_outputs = self.modal1(true_inputs) if len(true_inputs) > 0 else None
+        false_outputs = self.modal2(false_inputs) if len(false_inputs) > 0 else None
+
+        # Create an empty output tensor and fill in the values from the original indices
+        output_shape = true_outputs.shape if true_outputs is not None else false_outputs.shape
+        x = torch.empty((x.shape[0], *output_shape[1:]), device=x.device, dtype=x.dtype)
+
+        if len(true_inputs) > 0:
+            x[mod_mask] = true_outputs
+
+        if len(false_inputs) > 0:
+            x[~mod_mask] = false_outputs
+
+        activations.append(x)
+       
+        x = self.conv2(x)
+        activations.append(x)
+        x = self.avgpool(x)
         x = self.conv3(x)
+        activations.append(x)
         x = self.conv4(x)
+        activations.append(x)
+
+        
+
 
         previous = x
 
@@ -308,37 +369,10 @@ class FAN_HYPER(nn.Module):
                 tmp_out_ = self._modules['al' + str(i)](tmp_out)
                 previous = previous + ll + tmp_out_
 
-        out = outputs[-1]       
-        
+       
+        out = outputs[-1]
+        activations.append(out)
         if is_list:
             out = torch.split(out, [batch_dim, batch_dim, batch_dim], dim=0)
 
-        return out
-
-""" class GeoDistill(nn.Module):
-
-    def __init__(self, sigma=0.5, temperature=0.1 , out_res=32):
-        super(GeoDistill,self).__init__()
-        #self.softargmax = SoftArgmax2D(softmax_temp=temperature)
-        self.heatmap = HeatMap(out_res=out_res, sigma=sigma)
-
-    def forward(self,x):
-        #pts = self.softargmax(x)
-        pts = 4 * spatial_soft_argmax2d(x, False)
-        
-        out = self.heatmap(pts)
-        return out, pts """
-
-class GeoDistill(nn.Module):
-
-    def __init__(self, sigma=0.5, temperature=0.1 , out_res=32):
-        super(GeoDistill,self).__init__()
-        #self.softargmax = SoftArgmax2D(softmax_temp=temperature)
-        self.heatmap = HeatMap(out_res=out_res, sigma=sigma)
-
-    def forward(self,pts):
-        #pts = self.softargmax(x)
-        #pts = 4 * spatial_soft_argmax2d(x, False)
-        
-        out = self.heatmap(pts)
-        return out
+        return out, activations

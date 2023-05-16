@@ -4,74 +4,11 @@ from torch.utils.data import Dataset
 from torchvision.utils import save_image
 from shutil import copy2
 import torch
-
-
-class _RepeatSampler(object):
-    """ Sampler that repeats forever.
-
-    Args:
-        sampler (Sampler)
-    """
-
-    def __init__(self, sampler):
-        self.sampler = sampler
-
-    def __iter__(self):
-        while True:
-            yield from iter(self.sampler)
-
-
-class FastDataLoader(torch.utils.data.dataloader.DataLoader):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        object.__setattr__(self, 'batch_sampler', _RepeatSampler(self.batch_sampler))
-        self.iterator = super().__iter__()
-
-    def __len__(self):
-        return len(self.batch_sampler.sampler)
-
-    def __iter__(self):
-        for i in range(len(self)):
-            yield next(self.iterator)
-
-# mystuff
-#from model import model as HomoModel, modelElastic, modelHyper
-
-from model import HomoModel
-
-
 from databases import SuperDB
 from utils import *
 from Train_options import Options
 import ipdb
 import time
-
-def getModel(model:str, hyper:bool):
-    if model == "Homo":
-        return HomoModel
-    elif model == "SAIC_Homo_Patches" and not hyper:
-        return modelSAIC_Homo_Patches
-    elif model == "SAIC_Homo":
-        return modelSAIC_Homo
-    elif model == "Flow":
-        return modelFlow
-    else:
-        raise ValueError("Model's available are: Homo, TPS, SAIC_TPS, and SAIC_TPS_Patches")
-
-#import pca
-from sklearn.decomposition import PCA
-class Reduce_IMG:
-    def __init__(self):
-        self.pca = None
-
-    def reduce_img(self, image):
-        #check if self.pca is not None
-        if self.pca is None:
-            #fit pca based on image and reduce to 3 dim
-            self.pca = PCA(n_components=3).fit(image.reshape(-1, image.shape[-1]))
-        
-        return self.pca.transform(image.reshape(-1, image.shape[-1])).reshape(image.shape[0], image.shape[1], 3)
 
 
 
@@ -113,35 +50,27 @@ def main():
     angle = float(args.angle)
     flip = eval(str(args.flip))
     tight = int(args.tight)
-    elastic = args.elastic
-    hyper = bool(args.hyper)
-    model = args.model
+    
+    
+    model_type = args.model
     elastic_sigma = float(args.elastic_sigma)
     ws = float(args.ws)
     warp = str(args.warp)
 
-    if hyper:
-        if not args.n_genes:
-            raise RuntimeError("You need to provide n genes")
-        else:
-            n_genes = int(args.n_genes)
-    else:
-        n_genes = None
-
     
-    model = getModel(model, hyper)
+    model = getModel(model_type)
 
-    video_dataset = SuperDB(path=args.data_path,sigma=sigma,size=args.size,flip=flip,angle=angle,tight=tight, elastic=elastic, bSize=bSize, hyper=hyper, elastic_sigma=elastic_sigma, ws=ws)
+    video_dataset = SuperDB(path=args.data_path,sigma=sigma,size=args.size,flip=flip,angle=angle,tight=tight, bSize=bSize, elastic_sigma=elastic_sigma, ws=ws, model=model_type)
     n_chanels = video_dataset.get_num_channels()
     
     model = model(sigma=sigma,temperature=temperature, 
                           gradclip=gradclip, npts=npts, option=args.option, 
                           size=args.size, path_to_check=args.checkpoint, 
-                          warmup_steps = ws, n_chanels = n_chanels, elastic=elastic, warp=warp)
+                          warmup_steps = ws, n_chanels = n_chanels,  warp=warp)
     
     plotkeys = ['deformed_image1', 'deformed_image2','deformed_image1_rot','generated_rot','generated_deformed', 'rot_patches', 'deformed_patches', 'Im', 'ImP', 'generated', 'X_S', 'generated2', 'ImPD', 'genSamples']
 
-    losskeys = list(model.loss.keys()) + ['lambda']
+    losskeys = list(model.loss.keys())
     
     # define plotters
     global plotter
@@ -168,8 +97,14 @@ def main():
 
    
     # define data
-    #video_dataset = SuperDB(path=args.data_path,sigma=sigma,size=args.size,flip=flip,angle=angle,tight=tight, elastic=elastic, bSize=bSize, hyper=hyper, elastic_sigma=elastic_sigma, ws=ws)
-    videoloader = FastDataLoader(video_dataset, batch_size=bSize, shuffle=True, num_workers=int(args.num_workers), pin_memory=True)
+    
+    if model_type == '3d':
+        n_imgs = len(glob.glob(f"{args.data_path}/*"))
+        videoloader = FastDataLoader(video_dataset, batch_size=n_imgs, shuffle=False, num_workers=int(args.num_workers), pin_memory=True)
+    else:
+        videoloader = FastDataLoader(video_dataset, batch_size=bSize, shuffle=True, num_workers=int(args.num_workers), pin_memory=True)
+
+    
     print('Number of workers is {:d}, and bSize is {:d}'.format(int(args.num_workers),bSize))
        
     # define optimizers
@@ -185,10 +120,6 @@ def main():
     myoptimizers = {'FAN' : optimizerFAN}
 
     
-    
-
-
-
     # path to save models and images
     path_to_model = os.path.join(args.folder,args.file)
 
@@ -201,16 +132,12 @@ def main():
     patience = 5
     
     for epoch in range(0,160):
-        #if model.train_fan:
-        #    schedulerFAN.step()
         schedulerFAN.step()
 
-        loss = train_epoch(videoloader, model, myoptimizers, epoch, bSize, elastic, args.size, hyper)
+        loss = train_epoch(videoloader, model, myoptimizers, epoch, bSize, args.size)
         model._save(path_to_model,epoch)
-
-        
+ 
         # Check if early stopping should be performed
-
         improvement = best_loss - loss
         if improvement > min_improvement:
             best_loss = loss
@@ -218,8 +145,6 @@ def main():
         else:
             patience_counter += 1
 
-
-        #print epoc, loss and time in minutes with start time, patience_counter
         print('Epoch: [{0}]\t'
                 'Loss {loss:.4f}\t'
                 'Time {time:.2f}\t'
@@ -231,16 +156,14 @@ def main():
 
     
 
-def train_epoch(dataloader, model, myoptimizers, epoch, bSize, elastic, size, hyper):
+def train_epoch(dataloader, model, myoptimizers, epoch, bSize, size):
     itervideo = iter(dataloader)
     global l_iteration, reducer
     
     log_epoch = {}
     end = time.time()
-    #print(len(itervideo))
-    #As many itertions as deaful SAIC projectgit s
+
     for i in range(0,300):
-    
         # - get data
         all_data = next(itervideo,None) 
         if all_data is None:
@@ -250,33 +173,23 @@ def train_epoch(dataloader, model, myoptimizers, epoch, bSize, elastic, size, hy
             itervideo = iter(dataloader)
             all_data = next(itervideo, None)
 
-        # - set batch
-        
+        # - set batch   
         model._set_batch(all_data)
 
-        #time fowrd step with time
-        
         # - forward
         output = model.forward(l_iteration)
-        
-
-       
-            
+           
         myoptimizers['FAN'].step()
                 
         meters['losses']['rec'].update(model.loss['rec'].item(), bSize)
-        meters['losses']['perp'].update(model.loss['rec'].item(), bSize)
         l_iteration = l_iteration + 1
 
         
         if i % 100 == 0:
-
             allimgs_deformed = None
             for (ii,imtmp) in enumerate(model.A['ImP'].to('cpu').detach()):
                 hyper = imtmp.shape[0] >3
                 if hyper:
-                    #ipdb.set_trace()
-                    #imtmp = imtmp[:3,:,:]
                     imtmp = imtmp.permute(1,2,0).numpy()
                     imtmp = reducer.reduce_img(imtmp)
                     improc = (255*imtmp.astype(np.uint8).copy())
@@ -339,8 +252,6 @@ def train_epoch(dataloader, model, myoptimizers, epoch, bSize, elastic, size, hy
                     else:
                         allimgs_imageP = np.concatenate((allimgs_imageP, np.expand_dims(improc,axis=0)))
 
-
-
             if plotter is not None:
                 
                 
@@ -378,89 +289,8 @@ def train_epoch(dataloader, model, myoptimizers, epoch, bSize, elastic, size, hy
                     else:
                         plotter['images']['genSamples'].log(output['genSamples'].cpu().data)
 
-                                
-                """ if model.GEN and model.ws_finnished:
-                    if hyper:
-                        generated2 = None
-                        for img in output['generated2'].cpu().data:
-                            img = img.permute(1,2,0).numpy()
-                            img = reducer.reduce_img(img)
-                            img = (255*img.astype(np.uint8).copy())
-                            if generated2 is None:
-                                generated2 = np.expand_dims(img,axis=0)
-                            else:
-                                generated2 = np.concatenate((generated2, np.expand_dims(img,axis=0)))
-                        plotter['images']['generated2'].log(torch.from_numpy(generated2).permute(0,3,1,2))
-                    else:
-                        plotter['images']['generated2'].log(output['generated2'].cpu().data)
-
-                    if hyper:
-                        generated2 = None
-                        for img in output['samples_X'].cpu().data:
-                            img = img.permute(1,2,0).numpy()
-                            img = reducer.reduce_img(img)
-                            img = (255*img.astype(np.uint8).copy())
-                            if generated2 is None:
-                                generated2 = np.expand_dims(img,axis=0)
-                            else:
-                                generated2 = np.concatenate((generated2, np.expand_dims(img,axis=0)))
-                        plotter['images']['genSamples'].log(torch.from_numpy(generated2).permute(0,3,1,2))
-                    else:
-                        plotter['images']['genSamples'].log(output['samples_X'].cpu().data)
-                    
-                    
-                    #plotter['images']['genSamples'].log(output['samples_X'].cpu().data)
-
-                        
-
-                if model.GEN:
-                    allimgs_image = None
-                    for (ii,imtmp) in enumerate(all_data['ImPD'].to('cpu').detach()):
-                        
-                        if hyper:
-                            #imtmp = imtmp[:3,:,:]
-                            imtmp = imtmp.permute(1,2,0).numpy().copy()
-                            imtmp = reducer.reduce_img(imtmp)
-                            improc = (255*imtmp.astype(np.uint8).copy())
-                        else:
-                            improc = (255*imtmp.permute(1,2,0).numpy()).astype(np.uint8).copy()
-
-                        
-                        #x = 4*output['Points'][ii]
-                        x = output['Pts_PD'][ii]
-
-                        if torch.is_tensor(output['mapped_p']):
-                            m_x = output['mapped_p'][ii]
-                        
-                        for m in range(0,x.shape[0]):
-                            if hyper:
-                                cv2.circle(improc, (int(x[m,0]), int(x[m,1])), 2 * circle_size(size), (255, 255,255),-1)
-                            
-                            cv2.circle(improc, (int(x[m,0]), int(x[m,1])), circle_size(size), colors[m % 10],-1)
-
-                            if torch.is_tensor(output['mapped_p']):
-
-                                cv2.circle(improc, (int(m_x[m,0]), int(m_x[m,1])), circle_size(size), colors[m % 10],2)
-
-                        if allimgs_image is None:
-                            allimgs_image = np.expand_dims(improc,axis=0)
-                        else:
-                            allimgs_image = np.concatenate((allimgs_image, np.expand_dims(improc,axis=0)))
-
-                    plotter['images']['ImPD'].log(torch.from_numpy(allimgs_image).permute(0,3,1,2)) """
-
-
-
-                #print(model.loss['rec'].item())
-                #print(float(model.TPS.std.cpu()))
-                #plotter['losses']['rec'].log( l_iteration, model.loss['rec'].item() )
                 plotter['losses']['rec'].log( l_iteration, model.loss['perp'].item() )
-                
-                plotter['losses']['lambda'].log( l_iteration, model.loss['perp'].item() )
-
-
             
-               
         log_epoch[i] = model.loss       
         meters['batch_time'].update(time.time()-end)
         end = time.time()
