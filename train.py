@@ -1,3 +1,10 @@
+# The following implementation is based on the techniques described in:
+# "Object Landmark Discovery Through Unsupervised Adaptation" by Enrique Sanchez and Georgios Tzimiropoulos
+# You can find the article here: http://papers.nips.cc/paper/9505-object-landmark-discovery-through-unsupervised-adaptation.pdf
+#
+# For more details on the practical implementation of these techniques, check out the corresponding GitHub repository:
+# https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
+
 from __future__ import print_function, division
 import glob, os, sys, pickle, torch, cv2, time, numpy as np
 from torch.utils.data import Dataset
@@ -50,12 +57,14 @@ def main():
     angle = float(args.angle)
     flip = eval(str(args.flip))
     tight = int(args.tight)
+    crop = bool(args.crop)
     
     
     model_type = args.model
     elastic_sigma = float(args.elastic_sigma)
     ws = float(args.ws)
     warp = str(args.warp)
+    patience = int(args.patience)
 
     
     model = getModel(model_type)
@@ -66,7 +75,7 @@ def main():
     model = model(sigma=sigma,temperature=temperature, 
                           gradclip=gradclip, npts=npts, option=args.option, 
                           size=args.size, path_to_check=args.checkpoint, 
-                          warmup_steps = ws, n_chanels = n_chanels,  warp=warp)
+                          warmup_steps = ws, n_chanels = n_chanels,  warp=warp, crop=crop)
     
     plotkeys = ['deformed_image1', 'deformed_image2','deformed_image1_rot','generated_rot','generated_deformed', 'rot_patches', 'deformed_patches', 'Im', 'ImP', 'generated', 'X_S', 'generated2', 'ImPD', 'genSamples']
 
@@ -109,11 +118,10 @@ def main():
        
     # define optimizers
     lr_fan = args.lr_fan
-    lr_gan = args.lr_gan
-    lr_drift = args.lr_drift
+    
 
     
-    print('Using learning rate {} for FAN, and {} for GAN'.format(lr_fan,lr_gan))
+    print('Using learning rate {} for FAN'.format(lr_fan))
     optimizerFAN = torch.optim.Adam(model.FAN.parameters(), lr=lr_fan , betas=(0, 0.9), weight_decay=5*1e-4)
     schedulerFAN = torch.optim.lr_scheduler.StepLR(optimizerFAN, step_size=args.step_size, gamma=args.gamma)
 
@@ -129,7 +137,7 @@ def main():
     best_loss = float('inf')
     min_improvement = 1e-4
     patience_counter = 0
-    patience = 5
+    
     
     for epoch in range(0,160):
         schedulerFAN.step()

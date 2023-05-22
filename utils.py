@@ -1,3 +1,10 @@
+# The following implementation is based on the techniques described in:
+# "Object Landmark Discovery Through Unsupervised Adaptation" by Enrique Sanchez and Georgios Tzimiropoulos
+# You can find the article here: http://papers.nips.cc/paper/9505-object-landmark-discovery-through-unsupervised-adaptation.pdf
+#
+# For more details on the practical implementation of these techniques, check out the corresponding GitHub repository:
+# https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
+
 import os, sys, time, torch, math, numpy as np, cv2, collections
 #It will interfer with DataLoader otherwise
 cv2.setNumThreads(0)
@@ -34,6 +41,33 @@ colors = [(255, 0, 0),
           (128, 128, 0),
           (128, 0, 128),
           (0, 128, 128)]
+
+def preprocess(img):
+    #img = img[1:129, 1:129,:]
+    img = img/255.0
+    
+    img = torch.from_numpy(img.swapaxes(2,1).swapaxes(1,0))
+    img = img.type_as(torch.FloatTensor())
+    
+    return img
+
+
+def toImg(img, pts=None, size=128, set_pts=True):
+    allimgs_deformed = None
+    for (ii,imtmp) in enumerate(img.to('cpu').detach()):
+        improc = (255*imtmp.permute(1,2,0).numpy()).astype(np.uint8).copy()
+        
+        
+        if set_pts:
+            x = pts[ii]
+            for m in range(0,x.shape[0]):
+                cv2.circle(improc, (int(x[m,0]), int(x[m,1])), circle_size(size), colors[m % 10],-1)
+
+        if allimgs_deformed is None:
+            allimgs_deformed = np.expand_dims(improc,axis=0)
+        else:
+            allimgs_deformed = np.concatenate((allimgs_deformed, np.expand_dims(improc,axis=0)))
+    return allimgs_deformed
 
 def circle_size(size):
     return int(3 * np.ceil(size / 128))

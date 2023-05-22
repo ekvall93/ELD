@@ -1,3 +1,10 @@
+# The following implementation is based on the techniques described in:
+# "Object Landmark Discovery Through Unsupervised Adaptation" by Enrique Sanchez and Georgios Tzimiropoulos
+# You can find the article here: http://papers.nips.cc/paper/9505-object-landmark-discovery-through-unsupervised-adaptation.pdf
+#
+# For more details on the practical implementation of these techniques, check out the corresponding GitHub repository:
+# https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
+
 import argparse
 import os
 
@@ -40,7 +47,8 @@ class Options():
         self._parser.add_argument('--model', default="unimodal")
         self._parser.add_argument('--elastic_sigma', default=3, help='Elastic')
         self._parser.add_argument('--ws', default=5_000, help='ws')
-        self._parser.add_argument('--n_genes', default=None)
+        self._parser.add_argument('--patience', default=30)
+        self._parser.add_argument('--crop', default=True)
 
     def parse_args(self):
         self.args = self._parser.parse_args()

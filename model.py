@@ -1,9 +1,16 @@
+# The following implementation is based on the techniques described in:
+# "Object Landmark Discovery Through Unsupervised Adaptation" by Enrique Sanchez and Georgios Tzimiropoulos
+# You can find the article here: http://papers.nips.cc/paper/9505-object-landmark-discovery-through-unsupervised-adaptation.pdf
+#
+# For more details on the practical implementation of these techniques, check out the corresponding GitHub repository:
+# https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
+
 import sys
 
 import glob, os, sys, csv, math, functools, collections, numpy as np, torch, torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models.vgg import vgg16, vgg16_bn, vgg11_bn
-from MTFAN import FAN, MultiModalFAN, convertLayer, GeoDistill
+from MTFAN import FAN, MultiModalFAN, convertLayer
 from utils import *
 import itertools
 from torch.autograd import Variable
@@ -14,6 +21,38 @@ import random
 
 from warp import WARP, Rigid
 from piqa import MS_SSIM
+
+
+def loadFan(npoints=10,n_channels=3,path_to_model=None, path_to_core=None):
+    net = FAN(1,in_channels=n_channels, n_points=npoints).to('cuda')
+    checkpoint = torch.load(path_to_model)
+    checkpoint = {k.replace('module.',''): v for k,v in checkpoint.items()}
+    if path_to_core is not None:
+        net_dict = net.state_dict()
+        pretrained_dict = torch.load(path_to_core, map_location='cuda')
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if (k in net_dict)}
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if pretrained_dict[k].shape == net_dict[k].shape}
+        net_dict.update(pretrained_dict)
+        net.load_state_dict(net_dict, strict=True)
+        net.apply(convertLayer)
+    net.load_state_dict(checkpoint)
+    return net.to('cuda')
+
+def loadMultiModalFan(npoints=10,n_channels=3,path_to_model=None, path_to_core=None):
+    net = MultiModalFAN(1,in_channels=n_channels, n_points=npoints).to('cuda')
+    checkpoint = torch.load(path_to_model)
+    checkpoint = {k.replace('module.',''): v for k,v in checkpoint.items()}
+    if path_to_core is not None:
+        net_dict = net.state_dict()
+        pretrained_dict = torch.load(path_to_core, map_location='cuda')
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if (k in net_dict)}
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if pretrained_dict[k].shape == net_dict[k].shape}
+        net_dict.update(pretrained_dict)
+        net.load_state_dict(net_dict, strict=True)
+        net.apply(convertLayer)
+    net.load_state_dict(checkpoint)
+    return net.to('cuda')
+
 
 def crop(img1, img2):
     n = img1.size(1)
@@ -30,7 +69,7 @@ def crop(img1, img2):
     return img1, img2
 
 class UniModal():
-    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10, option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps'):
+    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10, option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps', crop=True):
         self.npoints = npts
         self.gradclip = gradclip
         self.n_chanels = n_chanels
@@ -73,12 +112,13 @@ class UniModal():
               
         self.FAN.to('cuda').train()
       
-        # - VGG for perceptual loss
-        self.loss_network = LossNetwork(torch.nn.DataParallel(vgg16_bn(pretrained=True))) if torch.cuda.device_count() > 1 else LossNetwork(vgg16(pretrained=True))
-        self.loss_network.eval()
-        self.loss_network.to('cuda')
+        
         self.loss = dict.fromkeys(['rec', 'perp'])
         self.A = None
+
+        self.mask = np.ones(self.npoints).astype(bool)
+
+        self.crop = crop
         
         # - define losses for reconstruction
 
@@ -91,6 +131,16 @@ class UniModal():
     def _set_batch(self,data):
         self.A = {k: Variable(data[k],requires_grad=True).to('cuda') for k in data.keys() if type(data[k]).__name__  == 'Tensor'}
 
+    def new_mask(self):
+        self.mask = np.random.choice(2, self.npoints, p=[0.1, 0.9]).astype(bool)
+
+    def set_mask(self, p=0.5):
+        if random.uniform(0,1)>p:
+            self.new_mask()
+            if random.uniform(0,1)>p:
+                self.new_mask()
+            else:
+                self.mask = np.ones(self.npoints).astype(bool)
 
     def forward(self, n_iter):
         b = self.A['Im'].shape[0]
@@ -113,6 +163,8 @@ class UniModal():
         Pts_P = 4 * spatial_soft_argmax2d(H_P, False)
         
         _Pts, _Pts_P = Pts, Pts_P
+        self.set_mask()
+        _Pts, _Pts_P = Pts[:,self.mask], Pts_P[:,self.mask]
   
         X = self.A['ImP']            
        
@@ -123,7 +175,12 @@ class UniModal():
         
         X = self.warp.warp_img(X, _Pts_P, _Pts)
         
-        X, Imgs = crop(X,  torch.cat([self.A['Im'], self.A['ImP']],0))
+        if self.crop:
+            X, Imgs = crop(X,  torch.cat([self.A['Im'], self.A['ImP']],0))
+        else:
+            X, Imgs = X,  torch.cat([self.A['Im'], self.A['ImP']],0)
+
+
         X, Y = torch.split(X, [b, b], dim=0)
         self.A['Im'], self.A['ImP'] = torch.split(Imgs, [b, b], dim=0)
 
@@ -150,8 +207,27 @@ class UniModal():
                 }
 
 
+def pearson_correlation_batch(images1, images2):
+    assert images1.shape == images2.shape, "Input image batches must have the same shape"
+
+    # Flatten images to 2-dimensional tensors (batch_size, channels * height * width)
+    images1_flat = images1.view(images1.shape[0], -1)
+    images2_flat = images2.view(images2.shape[0], -1)
+
+    # Calculate the means for each image in the batches
+    images1_mean = torch.mean(images1_flat, dim=1, keepdim=True)
+    images2_mean = torch.mean(images2_flat, dim=1, keepdim=True)
+
+    # Compute the Pearson correlation coefficients for each pair of images in the batches
+    numerator = torch.sum((images1_flat - images1_mean) * (images2_flat - images2_mean), dim=1)
+    denominator = torch.sqrt(torch.sum((images1_flat - images1_mean) ** 2, dim=1)) * torch.sqrt(torch.sum((images2_flat - images2_mean) ** 2, dim=1))
+
+    correlation_batch = numerator / denominator
+
+    return correlation_batch
+
 class MultiModal():
-    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps'):
+    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps', crop=True):
         self.npoints = npts
         self.gradclip = gradclip
         
@@ -210,6 +286,7 @@ class MultiModal():
 
         self.new_mask()
 
+        self.crop = crop
 
                                                                                                    
     def _resume(self,path_fan, path_gen):
@@ -270,8 +347,12 @@ class MultiModal():
 
         _Pts, _Pts_P = _Pts[:,self.mask], _Pts_P[:,self.mask]
 
-        Y = self.warp.warp_img(self.A['ImP'], _Pts_P, _Pts)        
-        Y, Im = crop(Y, self.A['Im'].clone())
+        Y = self.warp.warp_img(self.A['ImP'], _Pts_P, _Pts)  
+
+        if self.crop:     
+            Y, Im = crop(Y, self.A['Im'].clone())
+        else:
+            Y, Im = Y, self.A['Im'].clone()
 
         R_loss =  (1 - self.mssi(Y, Im))
 
@@ -281,12 +362,15 @@ class MultiModal():
 
         l = 0
         for i in range(len(A)):
-            l += self.SelfLoss(A_Z[i], A[i])
+            #l += self.SelfLoss(A_Z[i].detach(), A[i])
+            l +=  (1 - pearson_correlation_batch(A_Z[i].detach(), A[i]).mean())
             if i == 0:
                 #only use thist layers activations
                 break
-
+        
         l = l / (i + 1)
+
+
 
 
         X_2 = self.A['ImP']    
@@ -307,8 +391,8 @@ class MultiModal():
 
         X_mod1_ = self.warp.warp_img(X_mod1[rand_ix_m1], _Pts_P_mod1[rand_ix_m1], _Pts_P_mod1)
         X_mod2_ = self.warp.warp_img(X_mod2[rand_ix_m2], _Pts_P_mod2[rand_ix_m2], _Pts_P_mod2)
-
-        if self.step > 300:
+        
+        if self.crop:
             X_mod1, X_mod1_ = crop(X_mod1, X_mod1_)
             X_mod2_, X_mod2 = crop(X_mod2_, X_mod2)
 
@@ -345,7 +429,7 @@ def get_fraction_of_black(img1):
     return black_mask_Y_perm.squeeze().flatten(1,2).sum(1) / (img1.shape[2] * img1.shape[3])
 
 class Model3D():
-    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, hyper=False, n_genes = None, warp='tps', n_chanels=3):
+    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, hyper=False, n_genes = None, warp='tps', n_chanels=3, crop=True):
         self.npoints = npts
         self.gradclip = gradclip
         self.warmup_steps = warmup_steps
@@ -407,6 +491,8 @@ class Model3D():
 
         self.new_mask()
         self.rigid = Rigid()
+
+        self.crop = crop
 
 
     def _resume(self,path_fan, path_gen):
@@ -510,34 +596,29 @@ class Model3D():
         l_c = (1 - l_r).abs()
         l_r = l_r
 
-        if self.step > 100 == 0:
-            X_P1, X = crop_grey(X_P.clone(), X, True)
-            X_P2, X_r_1 = crop_grey(X_P.clone(), X_r.clone(), True)
-            X_P_r, X_r_2 = crop_grey(X_P_r, X_r.clone(), True)
+        if self.crop:
+            if self.step > 100 == 0:
+                X_P1, X = crop_grey(X_P.clone(), X, True)
+                X_P2, X_r_1 = crop_grey(X_P.clone(), X_r.clone(), True)
+                X_P_r, X_r_2 = crop_grey(X_P_r, X_r.clone(), True)
 
+            else:   
+                X_r_1 = X_r.clone()
+                X_r_2 = X_r.clone()
+                X_P1 = X_P.clone()
+                X_P2= X_P.clone()
         else:
             X_P1 = X_P.clone()
-            X_P2= X_P.clone()
             X_r_1 = X_r.clone()
+            X_P2 = X_P.clone()
             X_r_2 = X_r.clone()
         
-        X_P1 = X_P.clone()
-        X_P2= X_P.clone()
         
-        frac_b = get_fraction_of_black(Im)
-        frac_b = 1 + frac_b
-
+        loss = l_c * (1 - self.mssi(X_P1, X)) + l_r * (1 - self.mssi(X_P2, X_r_1))
         
-        loss = (1 - self.mssi(X_P2, X_r_1))
-        
-
-        loss = loss * frac_b
 
         loss = loss.mean()
-        
-
-        
-
+       
         
         perp_loss =  loss
         

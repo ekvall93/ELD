@@ -1,3 +1,10 @@
+# The following implementation is based on the techniques described in:
+# "Object Landmark Discovery Through Unsupervised Adaptation" by Enrique Sanchez and Georgios Tzimiropoulos
+# You can find the article here: http://papers.nips.cc/paper/9505-object-landmark-discovery-through-unsupervised-adaptation.pdf
+#
+# For more details on the practical implementation of these techniques, check out the corresponding GitHub repository:
+# https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
+
 import torch, torch.nn as nn, torch.nn.functional as F, math
 from torch.nn.modules.conv import _ConvNd
 from utils import *
