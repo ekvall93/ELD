@@ -207,25 +207,6 @@ class UniModal():
                 }
 
 
-def pearson_correlation_batch(images1, images2):
-    assert images1.shape == images2.shape, "Input image batches must have the same shape"
-
-    # Flatten images to 2-dimensional tensors (batch_size, channels * height * width)
-    images1_flat = images1.view(images1.shape[0], -1)
-    images2_flat = images2.view(images2.shape[0], -1)
-
-    # Calculate the means for each image in the batches
-    images1_mean = torch.mean(images1_flat, dim=1, keepdim=True)
-    images2_mean = torch.mean(images2_flat, dim=1, keepdim=True)
-
-    # Compute the Pearson correlation coefficients for each pair of images in the batches
-    numerator = torch.sum((images1_flat - images1_mean) * (images2_flat - images2_mean), dim=1)
-    denominator = torch.sqrt(torch.sum((images1_flat - images1_mean) ** 2, dim=1)) * torch.sqrt(torch.sum((images2_flat - images2_mean) ** 2, dim=1))
-
-    correlation_batch = numerator / denominator
-
-    return correlation_batch
-
 class MultiModal():
     def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps', crop=True):
         self.npoints = npts
@@ -362,8 +343,8 @@ class MultiModal():
 
         l = 0
         for i in range(len(A)):
-            #l += self.SelfLoss(A_Z[i].detach(), A[i])
-            l +=  (1 - pearson_correlation_batch(A_Z[i].detach(), A[i]).mean())
+            l += self.SelfLoss(A_Z[i], A[i])
+            
             if i == 0:
                 #only use thist layers activations
                 break
