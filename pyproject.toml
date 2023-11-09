@@ -1,0 +1,16 @@
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name="ELD"
+version="0.0.1"
+authors = [{name="Markus Ekvall", email="marekv@kth.se"}]
+
+
+[project.optional-dependencies]
+doc = [
+    "sphinx~=4.2.0",
+    "myst-parser",
+    "furo"
+]
