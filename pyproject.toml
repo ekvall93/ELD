@@ -6,7 +6,7 @@ build-backend = "flit_core.buildapi"
 name="ELD"
 version="0.0.1"
 authors = [{name="Markus Ekvall", email="marekv@kth.se"}]
-
+dynamic = ["version", "description"]
 
 [project.optional-dependencies]
 doc = [
