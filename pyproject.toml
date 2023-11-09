@@ -5,8 +5,8 @@ build-backend = "flit_core.buildapi"
 [project]
 name="ELD"
 version="0.0.1"
+description = "Spatial landmark detection for tissue images and registration"
 authors = [{name="Markus Ekvall", email="marekv@kth.se"}]
-dynamic = ["version", "description"]
 
 [project.optional-dependencies]
 doc = [
