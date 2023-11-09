@@ -1,4 +1,7 @@
-# ELD Project
+# ELD 
+
+![ELD logo](ELD.png)
+
 This repository contains notebooks and code for the ELD project. The main goal is to provide a toolset for training various models on different types of data.
 
 ## Dataset
