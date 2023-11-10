@@ -7,15 +7,6 @@ name="ELD"
 version="0.0.1"
 description = "Spatial landmark detection for tissue images and registration"
 authors = [{name="Markus Ekvall", email="marekv@kth.se"}]
-
-[project.optional-dependencies]
-doc = [
-    "sphinx~=4.2.0",
-    "myst-parser",
-    "furo"
-]
-
-[project.dependencies]
 dependencies = [
     "argon2-cffi==21.3.0",
     "argon2-cffi-bindings==21.2.0",
@@ -119,3 +110,12 @@ dependencies = [
     "yacs==0.1.8",
     "zipp==3.6.0"
 ]
+
+[project.optional-dependencies]
+doc = [
+    "sphinx~=4.2.0",
+    "myst-parser",
+    "furo"
+]
+
+
