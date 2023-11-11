@@ -17,4 +17,8 @@ Read installation instructions in {ref}`Installation`.
 
 usage
 notebooks/tutorial
+examples
+notebooks/unimodal
+notebooks/multimodal
+notebooks/3d
 ```
