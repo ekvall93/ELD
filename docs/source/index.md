@@ -17,7 +17,12 @@ Read installation instructions in {ref}`Installation`.
 
 usage
 notebooks/tutorial
-:caption: Examples
+```
+
+```{toctree}
+:caption: 'Examples:'
+:maxdepth: 2
+
 notebooks/unimodal
 notebooks/multimodal
 notebooks/3d
