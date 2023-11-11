@@ -9,9 +9,9 @@ from __future__ import print_function, division
 import glob, os, sys, pickle, torch, cv2, time, numpy as np
 from shutil import copy2
 import torch
-from .databases import SuperDB
-from .utils import *
-from .Train_options import Options
+from databases import SuperDB
+from utils import *
+from Train_options import Options
 import time
 
 

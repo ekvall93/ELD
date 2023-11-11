@@ -28,7 +28,10 @@ author = 'Markus Ekvall'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    "myst_parser"
+    "myst_parser",
+    "sphinx.ext.duration",
+    "sphinx.ext.autosectionlabel",
+    "nbsphinx"
 ]
 
 # Add any paths that contain templates here, relative to this directory.

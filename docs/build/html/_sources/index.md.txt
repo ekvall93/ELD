@@ -3,11 +3,17 @@
 % You can adapt this file completely to your liking, but it should at least
 % contain the root `toctree` directive.
 
-```{include} ../../README.md
-:relative-images:
-```
+<h1 align="center">ELD - Effortless Landmark Detection</h1>
+<p align="center">
+    <img src="ELD.png" alt="ELD logo"/>
+</p>
+
+For further information, check out {doc}`usage`
+Read installation instructions in {ref}`Installation`.
 
 ```{toctree}
 :caption: 'Contents:'
 :maxdepth: 2
+
+usage
 ```

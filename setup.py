@@ -16,7 +16,13 @@ setup(
         "doc": [
             "sphinx~=4.2.0",
             "myst-parser",
-            "furo"
+            "furo",
+            "nbsphinx"
         ]
+    },
+    entry_points={
+        'console_scripts': [
+            'eld-train=ELD.train:main',  # "eld-train" is the command to call your script
+        ],
     }
 )

@@ -7,7 +7,7 @@
 
 import torch, torch.nn as nn, torch.nn.functional as F
 from torch.nn.modules.conv import _ConvNd
-from .utils import *
+from utils import *
 from torch.nn.modules.utils import _pair
 import inspect
 

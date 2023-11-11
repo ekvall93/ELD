@@ -7,7 +7,7 @@
 
 import inspect, torch, cv2, numpy as np
 from torch.utils.data import Dataset
-from .utils import process_image_elastic
+from utils import process_image_elastic
 from glob import glob
 import tifffile as tiff
 import re

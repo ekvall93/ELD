@@ -14,7 +14,7 @@ import elasticdeform
 import numpy as np
 import random 
 from sklearn.decomposition import PCA
-from .model import UniModal, MultiModal, Model3D
+from model import UniModal, MultiModal, Model3D
 
 ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
 colors = [(255, 0, 0),

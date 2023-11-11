@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
-<link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" />
+<link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="Usage" href="usage.html" />
 
     <!-- Generated with Sphinx 6.2.1 and Furo 2023.09.10 -->
         <title>ELD documentation</title>
@@ -134,7 +134,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
         <div class="visually-hidden">Toggle table of contents sidebar</div>
         <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
       </label>
@@ -154,7 +154,11 @@
   <input type="hidden" name="area" value="default">
 </form>
 <div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
-  
+  <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
+</ul>
+
 </div>
 </div>
 
@@ -181,62 +185,43 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
             <div class="visually-hidden">Toggle table of contents sidebar</div>
             <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
           </label>
         </div>
         <article role="main">
-          <section id="eld">
-<h1>ELD<a class="headerlink" href="#eld" title="Permalink to this heading">#</a></h1>
-<p><img alt="ELD logo" src="_images/ELD3.png" /></p>
-<p>This repository contains notebooks and code for the ELD project. The main goal is to provide a toolset for training various models on different types of data.</p>
-<section id="dataset">
-<h2>Dataset<a class="headerlink" href="#dataset" title="Permalink to this heading">#</a></h2>
-<p>The data used in these notebooks is publicly available and can be accessed from the following link: ELD project on Figshare.</p>
-</section>
-<section id="how-to-train-models">
-<h2>How to Train Models<a class="headerlink" href="#how-to-train-models" title="Permalink to this heading">#</a></h2>
-<p>You can train models using different types of data: unimodal, 3D, and multimodal. The following sections describe how to use each type.</p>
-<section id="unimodal-data">
-<h3>Unimodal Data<a class="headerlink" href="#unimodal-data" title="Permalink to this heading">#</a></h3>
-<p>To train a model using unimodal data, use the –model unimodal flag. Here is an example command:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">train</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">elastic_sigma</span> <span class="mi">5</span> <span class="o">--</span><span class="n">cuda</span> <span class="mi">1</span> <span class="o">--</span><span class="n">port</span> <span class="mi">9006</span> <span class="o">--</span><span class="n">data_path</span> <span class="o">../</span><span class="n">marcoAnalysis</span><span class="o">/</span><span class="n">MOB_HE</span><span class="o">/</span> <span class="o">--</span><span class="n">npts</span> <span class="mi">16</span> <span class="o">--</span><span class="n">o</span> <span class="n">scratch</span> <span class="o">--</span><span class="n">elastic</span> <span class="kc">True</span> <span class="o">--</span><span class="n">step_size</span> <span class="mi">5</span> <span class="o">--</span><span class="n">ws</span> <span class="mi">0</span> <span class="o">--</span><span class="n">gamma</span> <span class="mf">0.9</span> <span class="o">--</span><span class="n">angle</span> <span class="mi">8</span> <span class="o">--</span><span class="n">model</span> <span class="n">unimodal</span>
-</pre></div>
-</div>
-</section>
-<section id="d-data">
-<h3>3D Data<a class="headerlink" href="#d-data" title="Permalink to this heading">#</a></h3>
-<p>To train a model on 3D tissue landmarks, use the –model 3d flag. The image files for this model should be named 0.png, 1.png,…,n.png where the number indicates the image’s position in the stack. Here is an example command:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">train</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">elastic_sigma</span> <span class="mi">5</span> <span class="o">--</span><span class="n">cuda</span> <span class="mi">1</span> <span class="o">--</span><span class="n">port</span> <span class="mi">9006</span> <span class="o">--</span><span class="n">data_path</span> <span class="o">../</span><span class="n">marcoAnalysis</span><span class="o">/</span><span class="n">CODA_prostate</span><span class="o">/</span> <span class="o">--</span><span class="n">npts</span> <span class="mi">16</span> <span class="o">--</span><span class="n">o</span> <span class="n">scratch</span> <span class="o">--</span><span class="n">elastic</span> <span class="kc">True</span> <span class="o">--</span><span class="n">step_size</span> <span class="mi">5</span> <span class="o">--</span><span class="n">ws</span> <span class="mi">0</span> <span class="o">--</span><span class="n">gamma</span> <span class="mf">0.9</span> <span class="o">--</span><span class="n">angle</span> <span class="mi">8</span> <span class="o">--</span><span class="n">model</span> <span class="mi">3</span><span class="n">d</span>
-</pre></div>
-</div>
-</section>
-<section id="multimodal-data">
-<h3>Multimodal Data<a class="headerlink" href="#multimodal-data" title="Permalink to this heading">#</a></h3>
-<p>To train a model using multimodal data, use the –model multimodal flag. The corresponding files should end with *_mod1.png or *_mod2.png, which indicate their respective modality. Here is an example command:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">train</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">elastic_sigma</span> <span class="mi">5</span> <span class="o">--</span><span class="n">cuda</span> <span class="mi">1</span> <span class="o">--</span><span class="n">port</span> <span class="mi">9006</span> <span class="o">--</span><span class="n">data_path</span> <span class="o">../</span><span class="n">marcoAnalysis</span><span class="o">/</span><span class="n">CODA_prostate</span><span class="o">/</span> <span class="o">--</span><span class="n">npts</span> <span class="mi">16</span> <span class="o">--</span><span class="n">o</span> <span class="n">scratch</span> <span class="o">--</span><span class="n">elastic</span> <span class="kc">True</span> <span class="o">--</span><span class="n">step_size</span> <span class="mi">5</span> <span class="o">--</span><span class="n">ws</span> <span class="mi">0</span> <span class="o">--</span><span class="n">gamma</span> <span class="mf">0.9</span> <span class="o">--</span><span class="n">angle</span> <span class="mi">8</span> <span class="o">--</span><span class="n">model</span> <span class="n">multimodal</span>
-</pre></div>
-</div>
-<p>Please adjust the parameters according to your needs.</p>
-</section>
-</section>
-<section id="credits">
-<h2>Credits<a class="headerlink" href="#credits" title="Permalink to this heading">#</a></h2>
-<p>This project makes use of the methods described in the paper <a class="reference external" href="http://papers.nips.cc/paper/9505-object-landmark-discovery-through-unsupervised-adaptation.pdf">Object Landmark Discovery Through Unsupervised Adaptation</a> by Enrique Sanchez and Georgios Tzimiropoulos, as presented at the Neural Information Processing Systems (NeurIPS) conference in 2019.</p>
-<p>A portion of our implementation is based on the code found in the following GitHub repository: <a class="reference external" href="https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019">SAIC-Unsupervised-landmark-detection-NeurIPS2019</a>.</p>
-<p>We would like to express our gratitude to the authors for their valuable work and for making their code available for the community.</p>
+          <h1 align="center">ELD - Effortless Landmark Detection</h1>
+<p align="center">
+    <img src="ELD.png" alt="ELD logo"/>
+</p>
+<p>For further information, check out <a class="reference internal" href="usage.html"><span class="doc">Usage</span></a>
+Read installation instructions in <a class="reference internal" href="usage.html#installation"><span class="std std-ref">Installation</span></a>.</p>
 <div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="usage.html#training">Training</a></li>
+</ul>
+</li>
+</ul>
 </div>
-</section>
-</section>
 
         </article>
       </div>
       <footer>
         
         <div class="related-pages">
-          
+          <a class="next-page" href="usage.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Usage</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
           
         </div>
         <div class="bottom-of-page">
@@ -256,34 +241,8 @@
         
       </footer>
     </div>
-    <aside class="toc-drawer">
+    <aside class="toc-drawer no-toc">
       
-      
-      <div class="toc-sticky toc-scroll">
-        <div class="toc-title-container">
-          <span class="toc-title">
-            On this page
-          </span>
-        </div>
-        <div class="toc-tree-container">
-          <div class="toc-tree">
-            <ul>
-<li><a class="reference internal" href="#">ELD</a><ul>
-<li><a class="reference internal" href="#dataset">Dataset</a></li>
-<li><a class="reference internal" href="#how-to-train-models">How to Train Models</a><ul>
-<li><a class="reference internal" href="#unimodal-data">Unimodal Data</a></li>
-<li><a class="reference internal" href="#d-data">3D Data</a></li>
-<li><a class="reference internal" href="#multimodal-data">Multimodal Data</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#credits">Credits</a></li>
-</ul>
-</li>
-</ul>
-
-          </div>
-        </div>
-      </div>
       
       
     </aside>

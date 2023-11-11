@@ -6,12 +6,12 @@
 # https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
 
 import numpy as np, torch
-from .MTFAN import FAN, MultiModalFAN, convertLayer
-from .utils import *
+from MTFAN import FAN, MultiModalFAN, convertLayer
+from utils import *
 from torch.autograd import Variable
 from torchgeometry.contrib import spatial_soft_argmax2d
 import random
-from .warp import WARP, Rigid
+from warp import WARP, Rigid
 from piqa import MS_SSIM
 from typing import Tuple
 
@@ -128,7 +128,6 @@ def get_fraction_of_black(img1: torch.Tensor)->float:
 
 class UniModal():
     def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10, option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps', crop=True):
-        self.n_chanels = n_chanels
         ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
         self.npoints = npts
         self.gradclip = gradclip
@@ -154,7 +153,7 @@ class UniModal():
         self.A = None
         ### Reused code ends
         
-        
+        self.n_chanels = n_chanels
         self.warp = WARP(warp)
         self.mssi = MS_SSIM(window_size=5,padding=True, n_channels=self.n_chanels).cuda()
         self.mask = np.ones(self.npoints).astype(bool)
@@ -206,8 +205,6 @@ class UniModal():
                 self.mask = np.ones(self.npoints).astype(bool)
 
     def forward(self, n_iter):
-        b = self.A['Im'].shape[0]
-        
         ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
         self.FAN.zero_grad()
         X = torch.cat([self.A['Im'], self.A['ImP']],0)
@@ -218,6 +215,8 @@ class UniModal():
         Pts_P = 4 * spatial_soft_argmax2d(H_P, False)
         ### Reused code ends
         
+        
+        b = self.A['Im'].shape[0]
         rand_ix = list(range(b))
         random.shuffle(rand_ix)
         
@@ -561,7 +560,6 @@ class Model3D():
         self.A['idx'] = self.A['idx'][indices]
 
         self.step +=1 
-        b = self.A['Im'].shape[0]
         
         ### Reused code from https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019 begins
         self.FAN.zero_grad()
@@ -573,7 +571,7 @@ class Model3D():
         Pts_P = 4 * spatial_soft_argmax2d(H_P, False)
         ### Reused code ends
         
-        
+        b = self.A['Im'].shape[0]
         rand_ix = list(range(b))
         random.shuffle(rand_ix)
         self.samples += b
