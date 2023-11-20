@@ -5,14 +5,14 @@
 
 <h1 align="center">ELD - Effortless Landmark Detection</h1>
 <p align="center">
-    <img src="ELD.png" alt="ELD logo"/>
+    <img src="https://i.postimg.cc/6pmrDxB6/ELD.png" alt="ELD logo"/>
 </p>
 
 For further information, check out {doc}`usage`
 Read installation instructions in {ref}`Installation`.
 
 ```{toctree}
-:caption: 'Contents:'
+:caption: 'Getting started:'
 :maxdepth: 2
 
 usage

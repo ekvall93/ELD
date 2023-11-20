@@ -8,10 +8,10 @@ To install ELD:
 (.venv) $ pip install .
 ```
 
-Then you have to install ```torch==1.10.0```, ```torchvision==1.10.0```, and ```torchaudio==1.10.0``` with the right CUDA version from [PyTorch Previous Versions](https://pytorch.org/get-started/previous-versions/). Here's an example:
+Then you have to install ```torch==1.9.0```, ```torchvision==0.10.0```, and ```torchaudio==0.9.0``` with the right CUDA version from [PyTorch Previous Versions](https://pytorch.org/get-started/previous-versions/). Here's an example:
 
 ```console
-(.venv) $ pip install torch==1.10.0+cu111 torchvision==0.11.0+cu111 torchaudio==0.10.0 -f https://download.pytorch.org/whl/torch_stable.html
+(.venv) $ pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
 ```
 
 ## Training

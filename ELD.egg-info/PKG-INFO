@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: ELD
+Version: 0.0.1
+Summary: Spatial landmark detection for tissue images and registration
+Author: Markus Ekvall
+Author-email: marekv@kth.se
+Provides-Extra: doc
+License-File: LICENSE.md

@@ -1,0 +1,2 @@
+[console_scripts]
+eld-train = ELD.train:main

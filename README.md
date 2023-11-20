@@ -2,51 +2,15 @@
 
 
 <p align="center">
-<img src="./ELD.png" alt="ELD logo"/>
+<img src="https://i.postimg.cc/6pmrDxB6/ELD.png" alt="ELD logo"/>
 </p>
 
 
-This repository contains notebooks and code for the ELD project. The main goal is to provide a toolset for training various models on different types of data.
+This repository contains notebooks and code for the ELD software from *"Spatial landmark detection and tissue registration with deep learning"*. 
 
 
-## Dataset
-The data used in these notebooks is publicly available and can be accessed from the following link: ELD project on Figshare.
-
-
-## How to Train Models
-You can train models using different types of data: unimodal, 3D, and multimodal. The following sections describe how to use each type.
-
-
-### Unimodal Data
-To train a model using unimodal data, use the --model unimodal flag. Here is an example command:
-
-
-
-
-```
-python train.py --elastic_sigma 5 --cuda 1 --port 9006 --data_path ../marcoAnalysis/MOB_HE/ --npts 16 --o scratch --elastic True --step_size 5 --ws 0 --gamma 0.9 --angle 8 --model unimodal
-```
-
-
-### 3D Data
-To train a model on 3D tissue landmarks, use the --model 3d flag. The image files for this model should be named 0.png, 1.png,...,n.png where the number indicates the image's position in the stack. Here is an example command:
-
-
-```
-python train.py --elastic_sigma 5 --cuda 1 --port 9006 --data_path ../marcoAnalysis/CODA_prostate/ --npts 16 --o scratch --elastic True --step_size 5 --ws 0 --gamma 0.9 --angle 8 --model 3d
-````
-
-
-### Multimodal Data
-To train a model using multimodal data, use the --model multimodal flag. The corresponding files should end with *_mod1.png or *_mod2.png, which indicate their respective modality. Here is an example command:
-
-
-```
-python train.py --elastic_sigma 5 --cuda 1 --port 9006 --data_path ../marcoAnalysis/CODA_prostate/ --npts 16 --o scratch --elastic True --step_size 5 --ws 0 --gamma 0.9 --angle 8 --model multimodal
-````
-
-
-Please adjust the parameters according to your needs.
+##  Installation and Tutorials
+Please go to our  <a href="https://eld.readthedocs.io/en/latest/index.html#">readthedocs</a> for installation and tutorials.
 
 
 
