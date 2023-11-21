@@ -15,7 +15,7 @@ import re
 x = torch.tensor([0])
 x.share_memory_()
 
-def get_frac(ws):
+def get_frac(ws:int)->float:
     """Get the fraction of the warmup on multiprocesses
 
     Args:

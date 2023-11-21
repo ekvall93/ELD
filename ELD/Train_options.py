@@ -56,7 +56,6 @@ class Options():
             experimentname = sorted([l for l in os.listdir(os.getcwd()) if os.path.isdir(l) and l.find('Exp') > -1])
             self.args.folder = 'Exp_{:d}'.format(len(experimentname))
         self.args.visdom = self.args.folder if eval(str(self.args.visdom)) else None
-        print(self.args.folder)
         return self.args
 
     def write_args(self):

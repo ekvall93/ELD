@@ -265,14 +265,29 @@ class FAN(nn.Module):
 
 
 
+""" 
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(ConvBlock, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.bn = nn.BatchNorm2d(out_channels)
+        
+    def forward(self, x):
+        x = F.relu(self.bn(self.conv(x)))
+        return x """
+
 class ModalityLayer(nn.Module):
     def __init__(self, in_channels):
         super(ModalityLayer, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3)
         self.bn1 = nn.BatchNorm2d(64)
+        self.conv2 = ConvBlock(64, 64)
+        self.conv3 = ConvBlock(64, 64)
         
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
+        x = self.conv2(x)
+        x = self.conv3(x)
         return x
 
 class MultiModalFAN(nn.Module):

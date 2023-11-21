@@ -8,10 +8,11 @@
 import numpy as np, torch
 from .MTFAN import FAN, MultiModalFAN, convertLayer
 from .utils import *
+from .warp import WARP, Rigid
 from torch.autograd import Variable
 from torchgeometry.contrib import spatial_soft_argmax2d
 import random
-from .warp import WARP, Rigid
+
 from piqa import MS_SSIM
 from typing import Tuple
 
@@ -157,8 +158,10 @@ class UniModal():
         
         self.warp = WARP(warp)
         self.mssi = MS_SSIM(window_size=5,padding=True, n_channels=self.n_chanels).cuda()
+        self.mssi_grey = MS_SSIM(window_size=5,padding=True, n_channels=1).cuda()
         self.mask = np.ones(self.npoints).astype(bool)
         self.crop = crop
+        self.step = 0
         
 
     def _resume(self,path_fan: str)->None:
@@ -207,6 +210,7 @@ class UniModal():
 
     def forward(self, n_iter):
         b = self.A['Im'].shape[0]
+        self.step   += 1
         
         ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
         self.FAN.zero_grad()
@@ -223,7 +227,8 @@ class UniModal():
         
         _Pts, _Pts_P = Pts, Pts_P
         self.set_mask()
-        _Pts, _Pts_P = Pts[:,self.mask], Pts_P[:,self.mask]
+        #_Pts, _Pts_P = Pts[:,self.mask], Pts_P[:,self.mask]
+        #_Pts, _Pts_P = Pts[:,self.mask], Pts_P[:,self.mask]
   
         X = self.A['ImP']            
        
@@ -233,10 +238,13 @@ class UniModal():
 
         
         X = self.warp.warp_img(X, _Pts_P, _Pts)
+        
         if self.crop:
             X, Imgs = crop(X,  torch.cat([self.A['Im'], self.A['ImP']],0))
         else:
             X, Imgs = X,  torch.cat([self.A['Im'], self.A['ImP']],0)
+            
+            
 
 
         X, Y = torch.split(X, [b, b], dim=0)
@@ -244,9 +252,10 @@ class UniModal():
 
         R_loss = (1 - self.mssi(X, self.A['Im']))
         
+        
         consistent_loss = (1 - self.mssi(Y, self.A['ImP']))
         
-        perp_loss =  R_loss + 0.1 * consistent_loss
+        perp_loss =  R_loss + 0.3 * consistent_loss
 
         ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
         self.loss['rec'] = perp_loss
@@ -263,7 +272,6 @@ class UniModal():
                 'Pts_P' : Pts_P,
                 'genSamples': Y
                 }
-
 
 class MultiModal():
     def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps', crop=True):
@@ -374,6 +382,10 @@ class MultiModal():
         MOD = torch.cat([self.A['mod'], self.A['mod']],0)
         
         H_X, A =  self.FAN(X, MOD == 1)
+        
+        #Get Im's activations
+        A = [a[:b] for a in A]
+        
         H, H_P = torch.split(H_X, [b, b], dim=0)
 
         ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
@@ -390,21 +402,26 @@ class MultiModal():
 
         Y = self.warp.warp_img(self.A['ImP'], _Pts_P, _Pts)  
 
-        if self.crop:     
+        """ if self.crop:     
             Y, Im = crop(Y, self.A['Im'].clone())
         else:
-            Y, Im = Y, self.A['Im'].clone()
+            Y, Im = Y, self.A['Im'].clone() """
 
+        Y, Im = Y, self.A['Im'].clone()
         R_loss =  (1 - self.mssi(Y, Im))
 
        
         Z, mod = self.warp.warp_img(self.A['ImP'][rand_ix], _Pts_P[rand_ix], _Pts), self.A['mod'][rand_ix]
         H_Z, A_Z = self.FAN(Z, mod == 1)
-
+        
+        
+        
+        
+        #ipdb.set_trace()
         l = 0
         for i in range(len(A)):
             l += self.SelfLoss(A_Z[i], A[i])
-            
+              
             if i == 0:
                 #only use thist layers activations
                 break
@@ -435,7 +452,11 @@ class MultiModal():
 
         inter_mod_loss = 0.5 * ((1 - self.mssi(X_mod1, X_mod1_)) + (1 - self.mssi(X_mod2_, X_mod2)))
 
-        perp_loss = R_loss +  10 * self.const(anneal_end=500) * l + 0.1 * inter_mod_loss
+        #perp_loss = R_loss +   0.1 * self.const(anneal_end=500) * l + 0.1 * inter_mod_loss
+        perp_loss = R_loss +   10 * self.const(anneal_end=500) * l + 0.1 * inter_mod_loss
+        
+        if self.step % 10 ==0:
+            print('R_loss: ', R_loss.item(), 'inter_mod_loss: ', inter_mod_loss.item(), 'mod_loss', 0.1 * self.const(anneal_end=500) * l )
        
 
         ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
@@ -457,9 +478,9 @@ class MultiModal():
 class Model3D():
     def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, hyper=False, n_genes = None, warp='tps', n_chanels=3, crop=True):
         ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
-        self.FAN = FAN(1,n_points=self.npoints)
         self.npoints = npts
         self.gradclip = gradclip
+        self.FAN = FAN(1,n_points=self.npoints)
         if not option == 'scratch':
             net_dict = self.FAN.state_dict()
             pretrained_dict = torch.load(path_to_check, map_location='cuda')

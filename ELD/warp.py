@@ -3,17 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from kornia.utils import create_meshgrid
 from kornia.geometry.transform import warp_affine
+from kornia.geometry.linalg import transform_points
+import kornia
+from typing import Tuple, Union
 
 class TPS:
     """Most of the code for the Thin Plate Splines orignates from https://kornia.readthedocs.io/en/latest/_modules/kornia/geometry/transform/thin_plate_spline.html,
     However, get_tps_transform method had to be rewritten due to bugs in the original code, and to handle regularization.
     TODO: Add regularization to the original code, and fix bug, and submit a pull request."""
-    def __init__(self, warp_type):
-        assert warp_type in ["tps", "affine"], "Wrong type"
-        self.use_tps = True if warp_type == "tps" else False
-        print(warp_type)
-        print(self.use_tps)
-        
+    def __init__(self):
+        self.use_tps = True
+      
     def _pair_square_euclidean(self, tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
         r"""Compute the pairwise squared euclidean distance matrices :math:`(B, N, M)` between two tensors
         with shapes (B, N, C) and (B, M, C)."""
@@ -40,16 +40,11 @@ class TPS:
         
         k_matrix: torch.Tensor = self.kernel_distance(pair_distance)
 
-        if self.use_tps:
-            warped: torch.Tensor = (
+        warped: torch.Tensor = (
                 (k_matrix[..., None].mul(kernel_weights[:, None]).sum(-2) +
                 points_src[..., None].mul(affine_weights[:, None, 1:]).sum(-2) +
                 affine_weights[:, None, 0])
             )
-        else:
-            warped: torch.Tensor = (
-            points_src[..., None].mul(affine_weights[:, None, 1:]).sum(-2) +
-            affine_weights[:, None, 0])
 
         return warped
 
@@ -268,23 +263,66 @@ class TPS:
         warped = warped.view(-1, h, w, 2)
         return warped
 
-    def normalize(self, src_pts, dts_pts, pts_to_map=None):
+    def normalize(self, src_pts: torch.Tensor, dts_pts: torch.Tensor, pts_to_map: Union[torch.Tensor,None]=None)->Tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
+        """normalize points
+
+        Args:
+            src_pts (Tensor): source points
+            dts_pts (Tensor): destination points
+            pts_to_map (Tensor, optional): points to map. Defaults to None.
+
+        Returns:
+            _type_: _description_
+        """
         if isinstance(pts_to_map, torch.Tensor):
             return src_pts / 63.5 - 1 , dts_pts / 63.5 - 1, pts_to_map / 63.5 - 1
         else:
             return src_pts / 63.5 - 1 , dts_pts / 63.5 - 1
 
-    def unnormalize(self, pts):
+    def unnormalize(self, pts: torch.Tensor)->torch.Tensor:
+        """unnormalize points
+
+        Args:
+            pts (Tensor): points
+
+        Returns:
+            Tensor: unnormalized points
+        """
         return (pts + 1) * 63.5
         
-    def warp_img(self,img, src, dst, reg=0, norm=True):
+    def warp_img(self,img: torch.Tensor, src: torch.Tensor, dst: torch.Tensor, reg: float=0.0, norm: bool=True)->torch.Tensor:
+        """warp image based on landmarks
+
+        Args:
+            img (Tensor): source image
+            src (Tensor): source landmarks
+            dst (Tensor): destination landmarks
+            reg (float, optional): regularizer. Defaults to 0.
+            norm (bool, optional): normalize. Defaults to True.
+
+        Returns:
+            Tensor: warped images
+        """
         if norm:
             src, dst = self.normalize(src, dst)
         src, dst = dst, src
         rbf_w, aff_w = self.get_tps_transform(src, dst, reg=reg)
         return self.warp_image_tps(img, src, rbf_w, aff_w)
 
-    def warp_pts(self, src, dst, pts_to_map, reg=0, norm=True, up_norm=True):
+    def warp_pts(self, src: torch.Tensor, dst: torch.Tensor, pts_to_map: torch.Tensor, reg: float=0.0, norm: bool=True, up_norm:bool=True)->torch.Tensor:
+        """Warp points with on landmarks
+
+        Args:
+            src (Tensor): source points
+            dst (Tensor): destination points
+            pts_to_map (Tensor): points to map
+            reg (float, optional): regularizer. Defaults to 0.
+            norm (bool, optional): normalize points. Defaults to True.
+            up_norm (bool, optional): unnormalize points . Defaults to True.
+
+        Returns:
+            Tensor: mapped pts
+        """
         if norm:
             src, dst, pts_to_map = self.normalize(src, dst, pts_to_map)
         rbf_w, aff_w = self.get_tps_transform(src, dst, reg=reg)
@@ -294,10 +332,7 @@ class TPS:
         return warped_src
 
 class Rigid:
-    def __init__(self):
-        pass
-
-    def find_rigid_alignment_batch(self, A, B):
+    def find_rigid_alignment_batch(self, A: torch.Tensor, B: torch.Tensor)->torch.Tensor:
         """
         Baased from: https://gist.github.com/bougui505/e392a371f5bab095a3673ea6f4976cc8
         
@@ -329,40 +364,107 @@ class Rigid:
         
         return R, t.squeeze(2)
 
-    def warp_img(self,img, src, dst, dsize=(128,128)):
+    def warp_img(self,img: torch.Tensor, src: torch.Tensor, dst: torch.Tensor, dsize: Tuple[int,int]=(128,128))->torch.Tensor:
+        """Warps image based on landmarks
+
+        Args:
+            img (torch.Tensor): images
+            src (torch.Tensor): source landmarks
+            dst (torch.Tensor): destination landmarks
+            dsize (tuple, optional): image size. Defaults to (128,128).
+
+        Returns:
+            torch.Tensor: warped images
+        """
         R_b,t_b = self.find_rigid_alignment_batch(src, dst)
         M = torch.cat([R_b, t_b[:,:,None]], axis=2)
         return warp_affine(img, M, dsize, mode='bilinear', padding_mode='zeros', align_corners=True)
 
-    def warp_pts(self, src, dst, pts_to_map):
+    def warp_pts(self, src: torch.Tensor, dst: torch.Tensor, pts_to_map: torch.Tensor)->torch.Tensor:
+        """Warps points based on landmarks
+
+        Args:
+            src (torch.Tensor): source landmarks
+            dst (torch.Tensor): destination landmarks
+            pts_to_map (torch.Tensor): points to map
+
+        Returns:
+            torch.Tensor: warped points
+        """
         R_b,t_b = self.find_rigid_alignment_batch(src, dst)
         return torch.bmm(R_b, pts_to_map.transpose(1,2)).transpose(1,2) + t_b[:,None,:]
     
-    def get_params(self, src, dst):
-        R_b,t_b = self.find_rigid_alignment_batch(src, dst)
-        return torch.cat([t_b[:,None,:], R_b], axis=1)
-
 class Homo:
     def __init__(self):
         pass 
 
-    def warp_pts(self,scr_pts, dst_pts, mapped_points, size=128):
-        M = kornia.geometry.homography.find_homography_dlt(dst_pts, scr_pts)
+    def warp_pts(self,src_pts: torch.Tensor, dst_pts: torch.Tensor, mapped_points: torch.Tensor)->torch.Tensor:
+        """Warp points with on landmarks
+
+        Args:
+            src_pts (Tensor): source points
+            dst_pts (Tensor): destination points
+            mapped_points (Tensor): _description_
+
+        Returns:
+            Tensor: mapped pts
+        """
+        #Need the reverese transform
+        M = kornia.geometry.homography.find_homography_dlt(src_pts, dst_pts)
         mapped_sample_pts = transform_points(M, mapped_points)
         return mapped_sample_pts
     
-    def warp_img(self, img, scr_pts, dst_pts, size=128):
-        M = kornia.geometry.homography.find_homography_dlt(scr_pts, dst_pts)
-        img_warp,_ = kornia.geometry.warp_perspective(img, M, dsize=(size, size))
+    def warp_img(self, img: torch.Tensor, src_pts: torch.Tensor, dst_pts: torch.Tensor, size: int=128)->torch.Tensor:
+        """Warp image based on landmarks
+
+        Args:
+            img (Tensor): images
+            src_pts (Tensor): source points
+            dst_pts (Tensor): destination points
+            size (int, optional): image size. Defaults to 128.
+
+        Returns:
+            Tensor: warped images
+        """
+        M = kornia.geometry.homography.find_homography_dlt(src_pts, dst_pts)
+        img_warp = kornia.geometry.warp_perspective(img, M, dsize=(size, size))
         return img_warp.clip(0,1)
 
 class WARP:
-    def __init__(self, warp_type):
-        assert warp_type in ["tps", "homo", "affine"], f"warp_type is wrong{warp_type}"
-        self.warper = TPS(warp_type) if warp_type in ["tps", "affine"] else Homo()
+    def __init__(self, warp_type: str):
+        self.warp_type = warp_type
+        if warp_type == 'tps':
+            self.warper = TPS()
+        elif warp_type == 'homo':
+            self.warper = Homo()
+        elif warp_type == 'rigid':
+            self.warper = Rigid()
+        else:
+            raise NotImplemented(f"warp_type {warp_type} is not implemented")
 
-    def warp_img(self, img, scr_pts, dst_pts, reg=0):
-        return self.warper.warp_img(img, scr_pts, dst_pts, reg=reg)
+    def warp_img(self, img, src_pts, dst_pts, reg: float=0)->torch.Tensor:
+        """Warp image based on landmarks
+
+        Args:
+            img (Tensor): images
+            src_pts (Tensor): source points
+            dst_pts (Tensor): destination points
+            reg (float, optional): how much to regularize TPS. Defaults to 0.
+
+        Returns:
+            Tensor: warped images
+        """
+        return self.warper.warp_img(img, src_pts, dst_pts, reg=reg) if self.warp_type == 'tps' else self.warper.warp_img(img, src_pts, dst_pts)
     
-    def warp_pts(self, src, dst, pts_to_map, reg=0):
-        return self.warper.warp_pts(src, dst, pts_to_map, reg=reg)
+    def warp_pts(self, src: torch.Tensor, dst: torch.Tensor, pts_to_map: torch.Tensor, reg: float=0)->torch.Tensor:
+        """Warp points with on landmarks
+
+        Args:
+            src_pts (Tensor): source points
+            dst_pts (Tensor): destination points
+            mapped_points (Tensor): _description_
+
+        Returns:
+            Tensor: mapped pts
+        """
+        return self.warper.warp_pts(src, dst, pts_to_map, reg=reg) if self.warp_type == 'tps' else self.warper.warp_pts(src, dst, pts_to_map)

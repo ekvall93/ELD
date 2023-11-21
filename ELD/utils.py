@@ -5,16 +5,20 @@
 # For more details on the practical implementation of these techniques, check out the corresponding GitHub repository:
 # https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
 
-import os, sys, time, torch, math, numpy as np, cv2, collections
+import torch, cv2
 #It will interfer with DataLoader otherwise
 cv2.setNumThreads(0)
-import torch.nn as nn
 import torch.nn.functional as F
 import elasticdeform
 import numpy as np
 import random 
 from sklearn.decomposition import PCA
 from .model import UniModal, MultiModal, Model3D
+from glob import glob
+import tifffile as tiff
+from torchgeometry.contrib import spatial_soft_argmax2d
+from .MTFAN import FAN
+from typing import Tuple
 
 ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
 colors = [(255, 0, 0),
@@ -29,14 +33,33 @@ colors = [(255, 0, 0),
           (0, 128, 128)]
 ### Reused code from ends
 
-def preprocess(img):
+def preprocess(img: np.array)->torch.Tensor:
+    """preprocess image
+
+    Args:
+        img (np.array): image
+
+    Returns:
+        torch.Tensor: preprocessed image
+    """
     img = img/255.0
     img = torch.from_numpy(img.swapaxes(2,1).swapaxes(1,0))
     img = img.type_as(torch.FloatTensor())
     return img
 
 
-def toImg(img, pts=None, size=128, set_pts=True):
+def toImg(img:torch.Tensor, pts:torch.Tensor=None, size:int=128, set_pts:bool=True)->np.array:
+    """convert image to numpy array
+
+    Args:
+        img (torch.Tensor): image
+        pts (torch.Tensor, optional): landmarks. Defaults to None.
+        size (int, optional): image size. Defaults to 128.
+        set_pts (bool, optional): set landmarks to image. Defaults to True.
+
+    Returns:
+        np.array: image as numpy array
+    """
     allimgs_deformed = None
     for (ii,imtmp) in enumerate(img.to('cpu').detach()):
         improc = (255*imtmp.permute(1,2,0).numpy()).astype(np.uint8).copy() 
@@ -51,7 +74,15 @@ def toImg(img, pts=None, size=128, set_pts=True):
             allimgs_deformed = np.concatenate((allimgs_deformed, np.expand_dims(improc,axis=0)))
     return allimgs_deformed
 
-def circle_size(size):
+def circle_size(size: int)->int:
+    """get circle size
+
+    Args:
+        size (int): image size
+
+    Returns:
+        int: image size
+    """
     return int(3 * np.ceil(size / 128))
     
 class AverageMeter(object):
@@ -67,16 +98,35 @@ class AverageMeter(object):
         self.sum = 0
         self.count = 0
 
-    def update(self, val, n=1):
+    def update(self, val: int, n: int=1)->None:
+        """update average meter
+
+        Args:
+            val (int): value
+            n (int, optional): multiplier. Defaults to 1.
+        """
         self.val = val
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
 
+def process_image_elastic(image: np.array,angle:float=0, flip: bool=False, sigma: float=1,size:int=128, tight:int=16, hmsize:int=64, elastic_simga: float=5, rot_img:bool=False)->torch.Tensor:
+    """process image
 
+    Args:
+        image (np.array): image
+        angle (float, optional): _description_. Defaults to 0.
+        flip (bool, optional): _description_. Defaults to False.
+        sigma (float, optional): _description_. Defaults to 1.
+        size (int, optional): _description_. Defaults to 128.
+        tight (int, optional): _description_. Defaults to 16.
+        hmsize (int, optional): _description_. Defaults to 64.
+        elastic_simga (float, optional): _description_. Defaults to 5.
+        rot_img (bool, optional): _description_. Defaults to False.
 
-
-def process_image_elastic(image,angle=0, flip=False, sigma=1,size=128, tight=16, hmsize=64, elastic_simga=5, rot_img=False):
+    Returns:
+        torch.Tensor: _description_
+    """
     output = dict.fromkeys(['image','image_rot', 'image_deformed','points','M'])
 
     image = image/255.0
@@ -214,3 +264,125 @@ class Reduce_IMG:
             #fit pca based on image and reduce to 3 dim
             self.pca = PCA(n_components=3).fit(image.reshape(-1, image.shape[-1]))    
         return self.pca.transform(image.reshape(-1, image.shape[-1])).reshape(image.shape[0], image.shape[1], 3)
+    
+    
+def load_imgs(path: str, sort:bool= False)->list:
+    """load images from path
+
+    Args:
+        path (str): path to image folder
+
+    Returns:
+        list: list of images
+    """
+    #get files with glob
+    files = glob(f"{path}*")
+    
+    if sort:
+        #sort files by number
+        files = sorted(files, key=lambda x: int(x.split('/')[-1].split('.')[0]))
+    #load images
+    if files[0].endswith('.tif'):
+        imgs = [tiff.imread(f) for f in files]
+    else:
+        imgs = [cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2RGB) for f in files]
+    return imgs
+
+def predict_landmarks(fan: FAN, image: torch.Tensor)->torch.Tensor:
+    """Predict landmarks from image
+
+    Args:
+        fan (FAN): trained landmark detector
+        image (torch.Tensor): image to predict landmarks from
+
+    Returns:
+        torch.Tensor: landmarks
+    """
+    with torch.no_grad():
+        fan.eval()
+        with torch.no_grad():
+            pts = 4 * spatial_soft_argmax2d(fan(image.cuda()), False)
+    return pts
+
+def create_target_landmarks(pts: torch.Tensor, target_index: int)->torch.Tensor:
+    """create target landmarks
+
+    Args:
+        pts (torch.Tensor): landmarks
+        target_index (int): index of target image
+
+    Returns:
+        torch.Tensor: target landmarks
+    """
+    dst_pts = pts[target_index].unsqueeze(0).repeat((pts.size(0), 1, 1))
+    return dst_pts
+
+def load_multi_modal_imgs(path:str)->Tuple[list, list]:
+    """load multimodal images
+
+    Args:
+        path (str): path to image folder
+
+    Returns:
+        Tuple[list, list]: tuple of images
+    """
+    #get files with glob
+    files = glob(f"{path}*")
+    #sort files by number
+    
+
+    mod0, mod1 = [], []
+    for f in files:
+        if "mod0" in f:
+            mod0.append(f)
+        elif "mod1" in f:
+            mod1.append(f)
+    
+    #load images
+    if mod0[0].endswith('.tif'):
+        mod0 = [tiff.imread(f) for f in mod0]
+    else:
+        mod0 = [cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2RGB) for f in mod0]
+
+    #load images
+    if mod1[0].endswith('.tif'):
+        mod1 = [tiff.imread(f) for f in mod1]
+    else:
+        mod1 = [cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2RGB) for f in mod1]
+
+
+    return mod0, mod1
+
+def make_mask(img: torch.Tensor, is_true:bool=True)->torch.Tensor:
+    """make mask for multimodal images
+
+    Args:
+        img (torch.Tensor): image
+        is_true (bool, optional): If it's first modality. Defaults to True.
+
+    Returns:
+        torch.Tensor: mask
+    """
+    if is_true:
+        return torch.ones(img.shape[0], dtype=torch.bool)
+    else:
+        return torch.zeros(img.shape[0], dtype=torch.bool)
+    
+
+
+def predict_multimodal_landmarks(fan: FAN, image: torch.Tensor, ismod0:bool=True)->torch.Tensor:
+    """Predict landmarks for multimodal images
+
+    Args:
+        fan (FAN): Landmark model
+        image (torch.Tensor): images to predict landmarks from
+        ismod0 (bool, optional): if it's the first modality. Defaults to True.
+
+    Returns:
+        torch.Tensor: landmarks
+    """
+    with torch.no_grad():
+        fan.eval()
+        with torch.no_grad():
+            pts = 4 * spatial_soft_argmax2d(fan(image.cuda(), make_mask(image, ismod0).cuda())[0], False)
+    return pts
