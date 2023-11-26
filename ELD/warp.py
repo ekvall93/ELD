@@ -11,8 +11,8 @@ class TPS:
     """Most of the code for the Thin Plate Splines orignates from https://kornia.readthedocs.io/en/latest/_modules/kornia/geometry/transform/thin_plate_spline.html,
     However, get_tps_transform method had to be rewritten due to bugs in the original code, and to handle regularization.
     TODO: Add regularization to the original code, and fix bug, and submit a pull request."""
-    def __init__(self):
-        self.use_tps = True
+    def __init__(self, affine: bool = False):
+        self.affine = affine
       
     def _pair_square_euclidean(self, tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
         r"""Compute the pairwise squared euclidean distance matrices :math:`(B, N, M)` between two tensors
@@ -95,12 +95,16 @@ class TPS:
         #Fix bug in original code, before self._pair_square_euclidean(points_src, points_dst)
         pair_distance: torch.Tensor = self._pair_square_euclidean(points_src, points_src)
         n_pts = points_src.size(1)
+        
         k_matrix = self.kernel_distance(pair_distance)
-        mask = torch.linalg.matrix_rank(k_matrix) != n_pts
+        
+        if not self.affine:
+            mask = torch.linalg.matrix_rank(k_matrix) != n_pts
+            k_matrix = k_matrix + torch.eye(n_pts,n_pts).cuda()[None].repeat(batch_size,1,1) * reg
 
-        k_matrix = k_matrix + torch.eye(n_pts,n_pts).cuda()[None].repeat(batch_size,1,1) * reg
-
-        k_matrix[mask] = k_matrix[mask] + torch.eye(n_pts,n_pts).cuda()[None].repeat(sum(mask),1,1) * 0.001
+            k_matrix[mask] = k_matrix[mask] + torch.eye(n_pts,n_pts).cuda()[None].repeat(sum(mask),1,1) * 0.001
+        else:
+            k_matrix = k_matrix + torch.eye(n_pts,n_pts).cuda()[None].repeat(batch_size,1,1) * 10e20 
 
         
 
@@ -117,11 +121,7 @@ class TPS:
         
         weights = torch.linalg.solve(l_matrix, dest_with_zeros)
 
-        if not self.use_tps:
-            affine_weights = torch.linalg.pinv(p_matrix) @ points_dst
-            rbf_weights = affine_weights
-            return (rbf_weights, affine_weights)
-
+       
         rbf_weights = weights[:, :-3]
         affine_weights = weights[:, -3:]
 
@@ -263,34 +263,38 @@ class TPS:
         warped = warped.view(-1, h, w, 2)
         return warped
 
-    def normalize(self, src_pts: torch.Tensor, dts_pts: torch.Tensor, pts_to_map: Union[torch.Tensor,None]=None)->Tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
-        """normalize points
+    def normalize(self, src_pts: torch.Tensor, dts_pts: torch.Tensor, size: int = 128, pts_to_map: Union[torch.Tensor, None] = None) -> Tuple[torch.Tensor, torch.Tensor, Union[torch.Tensor, None]]:
+        """Normalize points for a given size.
 
         Args:
-            src_pts (Tensor): source points
-            dts_pts (Tensor): destination points
-            pts_to_map (Tensor, optional): points to map. Defaults to None.
+            src_pts (Tensor): Source points.
+            dts_pts (Tensor): Destination points.
+            size (int): Size of the images the points correspond to.
+            pts_to_map (Tensor, optional): Points to map. Defaults to None.
 
         Returns:
-            _type_: _description_
+            Tuple[torch.Tensor, torch.Tensor, Union[torch.Tensor, None]]: Normalized source points, destination points, and optionally points to map.
         """
+        scale_factor = (size - 1) / 2.0
         if isinstance(pts_to_map, torch.Tensor):
-            return src_pts / 63.5 - 1 , dts_pts / 63.5 - 1, pts_to_map / 63.5 - 1
+            return src_pts / scale_factor - 1, dts_pts / scale_factor - 1, pts_to_map / scale_factor - 1
         else:
-            return src_pts / 63.5 - 1 , dts_pts / 63.5 - 1
+            return src_pts / scale_factor - 1, dts_pts / scale_factor - 1
 
-    def unnormalize(self, pts: torch.Tensor)->torch.Tensor:
-        """unnormalize points
+    def unnormalize(self, pts: torch.Tensor, size: int) -> torch.Tensor:
+        """Unnormalize points for a given size.
 
         Args:
-            pts (Tensor): points
+            pts (Tensor): Normalized points.
+            size (int): Size of the images the points correspond to.
 
         Returns:
-            Tensor: unnormalized points
+            Tensor: Unnormalized points.
         """
-        return (pts + 1) * 63.5
+        scale_factor = (size - 1) / 2.0
+        return (pts + 1) * scale_factor
         
-    def warp_img(self,img: torch.Tensor, src: torch.Tensor, dst: torch.Tensor, reg: float=0.0, norm: bool=True)->torch.Tensor:
+    def warp_img(self,img: torch.Tensor, src: torch.Tensor, dst: torch.Tensor, reg: float=0.0, norm: bool=True, size: int = 128)->torch.Tensor:
         """warp image based on landmarks
 
         Args:
@@ -304,12 +308,12 @@ class TPS:
             Tensor: warped images
         """
         if norm:
-            src, dst = self.normalize(src, dst)
+            src, dst = self.normalize(src, dst, size=size)
         src, dst = dst, src
         rbf_w, aff_w = self.get_tps_transform(src, dst, reg=reg)
         return self.warp_image_tps(img, src, rbf_w, aff_w)
 
-    def warp_pts(self, src: torch.Tensor, dst: torch.Tensor, pts_to_map: torch.Tensor, reg: float=0.0, norm: bool=True, up_norm:bool=True)->torch.Tensor:
+    def warp_pts(self, src: torch.Tensor, dst: torch.Tensor, pts_to_map: torch.Tensor, reg: float=0.0, norm: bool=True, up_norm:bool=True, size: int = 128)->torch.Tensor:
         """Warp points with on landmarks
 
         Args:
@@ -324,11 +328,11 @@ class TPS:
             Tensor: mapped pts
         """
         if norm:
-            src, dst, pts_to_map = self.normalize(src, dst, pts_to_map)
+            src, dst, pts_to_map = self.normalize(src, dst, size, pts_to_map)
         rbf_w, aff_w = self.get_tps_transform(src, dst, reg=reg)
         warped_src: torch.Tensor = self.warp_points_tps(pts_to_map, src, rbf_w, aff_w) 
         if up_norm:
-            warped_src = self.unnormalize(warped_src)
+            warped_src = self.unnormalize(warped_src, size=size)
         return warped_src
 
 class Rigid:
@@ -435,6 +439,8 @@ class WARP:
         self.warp_type = warp_type
         if warp_type == 'tps':
             self.warper = TPS()
+        elif warp_type == 'affine':
+            self.warper = TPS(True)
         elif warp_type == 'homo':
             self.warper = Homo()
         elif warp_type == 'rigid':
