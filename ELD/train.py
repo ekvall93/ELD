@@ -58,6 +58,7 @@ def main():
     flip = eval(str(args.flip))
     tight = int(args.tight)
     crop = bool(args.crop)
+    device = str(args.device)
     
     ### Reused code from ends
     
@@ -77,7 +78,7 @@ def main():
     model = model(sigma=sigma,temperature=temperature, 
                           gradclip=gradclip, npts=npts, option=args.option, 
                           size=args.size, path_to_check=args.checkpoint, 
-                          warmup_steps = ws, n_chanels = n_chanels,  warp=warp, crop=crop)
+                          warmup_steps = ws, n_chanels = n_chanels,  warp=warp, crop=crop, device=device)
     
     plotkeys = ['deformed_image1', 'deformed_image2','deformed_image1_rot','generated_rot','generated_deformed', 'rot_patches', 'deformed_patches', 'Im', 'ImP', 'generated', 'X_S', 'generated2', 'ImPD', 'genSamples']
 

@@ -16,7 +16,7 @@ import random
 from piqa import MS_SSIM
 from typing import Tuple
 
-def loadFan(npoints=10,n_channels=3,path_to_model=None, path_to_core=None)->FAN:
+def loadFan(npoints=10,n_channels=3,path_to_model=None, path_to_core=None, device='cuda')->FAN:
     """Loads the landmark detection model.
     From: https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
     Args:
@@ -28,21 +28,21 @@ def loadFan(npoints=10,n_channels=3,path_to_model=None, path_to_core=None)->FAN:
     Returns:
         FAN: Landmark detection model
     """
-    net = FAN(1,in_channels=n_channels, n_points=npoints).to('cuda')
+    net = FAN(1,in_channels=n_channels, n_points=npoints).to(device)
     checkpoint = torch.load(path_to_model)
     checkpoint = {k.replace('module.',''): v for k,v in checkpoint.items()}
     if path_to_core is not None:
         net_dict = net.state_dict()
-        pretrained_dict = torch.load(path_to_core, map_location='cuda')
+        pretrained_dict = torch.load(path_to_core, map_location=device)
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if (k in net_dict)}
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if pretrained_dict[k].shape == net_dict[k].shape}
         net_dict.update(pretrained_dict)
         net.load_state_dict(net_dict, strict=True)
         net.apply(convertLayer)
     net.load_state_dict(checkpoint)
-    return net.to('cuda')
+    return net.to(device)
 
-def loadMultiModalFan(npoints=10,n_channels=3,path_to_model=None, path_to_core=None)->MultiModalFAN:
+def loadMultiModalFan(npoints=10,n_channels=3,path_to_model=None, path_to_core=None, device='cuda')->MultiModalFAN:
     """Loads the landmark detection model.
     From: https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
     Args:
@@ -54,19 +54,19 @@ def loadMultiModalFan(npoints=10,n_channels=3,path_to_model=None, path_to_core=N
     Returns:
         MultiModalFAN: Landmark detection model
     """
-    net = MultiModalFAN(1,in_channels=n_channels, n_points=npoints).to('cuda')
+    net = MultiModalFAN(1,in_channels=n_channels, n_points=npoints).to(device)
     checkpoint = torch.load(path_to_model)
     checkpoint = {k.replace('module.',''): v for k,v in checkpoint.items()}
     if path_to_core is not None:
         net_dict = net.state_dict()
-        pretrained_dict = torch.load(path_to_core, map_location='cuda')
+        pretrained_dict = torch.load(path_to_core, map_location=device)
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if (k in net_dict)}
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if pretrained_dict[k].shape == net_dict[k].shape}
         net_dict.update(pretrained_dict)
         net.load_state_dict(net_dict, strict=True)
         net.apply(convertLayer)
     net.load_state_dict(checkpoint)
-    return net.to('cuda')
+    return net.to(device)
 
 
 def crop(img1: torch.Tensor, img2: torch.Tensor)->Tuple[torch.Tensor, torch.Tensor]:
@@ -91,7 +91,7 @@ def crop(img1: torch.Tensor, img2: torch.Tensor)->Tuple[torch.Tensor, torch.Tens
     return img1, img2
 
 
-def toGrey(img: torch.Tensor)->torch.Tensor:
+def toGrey(img: torch.Tensor, device='cuda')->torch.Tensor:
     """Convert to grayscale
 
     Args:
@@ -100,7 +100,7 @@ def toGrey(img: torch.Tensor)->torch.Tensor:
     Returns:
         Tensor: grey image
     """
-    return torch.einsum('bchw, c -> bhw', img, torch.tensor([0.299, 0.587, 0.114]).cuda()).unsqueeze(1)
+    return torch.einsum('bchw, c -> bhw', img, torch.tensor([0.299, 0.587, 0.114]).to(device)).unsqueeze(1)
 
 def compute_area(img: torch.Tensor)->float:
     """Compute area of image that is not zero
@@ -128,7 +128,7 @@ def get_fraction_of_black(img1: torch.Tensor)->float:
 
 
 class UniModal():
-    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10, option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps', crop=True):
+    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10, option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps', crop=True, device='cuda'):
         self.n_chanels = n_chanels
         ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
         self.npoints = npts
@@ -137,7 +137,7 @@ class UniModal():
         self.FAN = FAN(1,n_points=self.npoints, in_channels=self.n_chanels)
         if not option == 'scratch':
             net_dict = self.FAN.state_dict()
-            pretrained_dict = torch.load(path_to_check, map_location='cuda')
+            pretrained_dict = torch.load(path_to_check, map_location=device)
             pretrained_dict = {k: v for k, v in pretrained_dict.items() if (k in net_dict)}
             pretrained_dict = {k: v for k, v in pretrained_dict.items() if pretrained_dict[k].shape == net_dict[k].shape}
             net_dict.update(pretrained_dict)
@@ -147,21 +147,22 @@ class UniModal():
                 self.FAN.apply(convertLayer)
                 
         # - multiple GPUs
-        if torch.cuda.device_count() > 1:
+        if torch.cuda.device_count() > 1 and device == 'cuda':
             self.FAN = torch.nn.DataParallel(self.FAN)
               
-        self.FAN.to('cuda').train()
+        self.FAN.to(device).train()
         self.loss = dict.fromkeys(['rec', 'perp'])
         self.A = None
         ### Reused code ends
         
         
         self.warp = WARP(warp)
-        self.mssi = MS_SSIM(window_size=5,padding=True, n_channels=self.n_chanels).cuda()
-        self.mssi_grey = MS_SSIM(window_size=5,padding=True, n_channels=1).cuda()
+        self.mssi = MS_SSIM(window_size=5,padding=True, n_channels=self.n_chanels).to(device)
+        self.mssi_grey = MS_SSIM(window_size=5,padding=True, n_channels=1).to(device)
         self.mask = np.ones(self.npoints).astype(bool)
         self.crop = crop
         self.step = 0
+        self.device = device
         
 
     def _resume(self,path_fan: str)->None:
@@ -187,7 +188,7 @@ class UniModal():
         Args:
             data (dict): data dict
         """
-        self.A = {k: Variable(data[k],requires_grad=True).to('cuda') for k in data.keys() if type(data[k]).__name__  == 'Tensor'}
+        self.A = {k: Variable(data[k],requires_grad=True).to(self.device) for k in data.keys() if type(data[k]).__name__  == 'Tensor'}
 
     def new_mask(self)->None:
         """
@@ -274,7 +275,7 @@ class UniModal():
                 }
 
 class MultiModal():
-    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps', crop=True):
+    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, n_chanels = 3, warp='tps', crop=True, device='cuda'):
         ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
         self.npoints = npts
         self.gradclip = gradclip
@@ -282,7 +283,7 @@ class MultiModal():
         
         if not option == 'scratch':
             net_dict = self.FAN.state_dict()
-            pretrained_dict = torch.load(path_to_check, map_location='cuda')
+            pretrained_dict = torch.load(path_to_check, map_location=device)
             pretrained_dict = {k: v for k, v in pretrained_dict.items() if (k in net_dict)}
             pretrained_dict = {k: v for k, v in pretrained_dict.items() if pretrained_dict[k].shape == net_dict[k].shape}
             net_dict.update(pretrained_dict)
@@ -292,23 +293,24 @@ class MultiModal():
                 self.FAN.apply(convertLayer)
                 
         # - multiple GPUs
-        if torch.cuda.device_count() > 1:
+        if torch.cuda.device_count() > 1 and device == 'cuda':
             self.FAN = torch.nn.DataParallel(self.FAN)
             
-        self.FAN.to('cuda').train()    
+        self.FAN.to(device).train()    
         self.loss = dict.fromkeys(['rec', 'perp'])
         self.A = None
         
         # - define losses for reconstruction
-        self.SelfLoss = torch.nn.MSELoss().to('cuda')
+        self.SelfLoss = torch.nn.MSELoss().to(device)
         ### Reused code ends
         
         self.n_chanels = n_chanels
         self.warp = WARP(warp)
-        self.mssi = MS_SSIM(window_size=5,padding=True, n_channels=self.n_chanels).cuda()
+        self.mssi = MS_SSIM(window_size=5,padding=True, n_channels=self.n_chanels).to(device)
         self.step = 0
         self.new_mask()
         self.crop = crop
+        self.device = device
 
                                                                                                    
     def _resume(self,path_fan: str)->None:
@@ -334,7 +336,7 @@ class MultiModal():
         Args:
             data (dict): data dict
         """
-        self.A = {k: Variable(data[k],requires_grad=True).to('cuda') for k in data.keys() if type(data[k]).__name__  == 'Tensor'}
+        self.A = {k: Variable(data[k],requires_grad=True).to(self.device) for k in data.keys() if type(data[k]).__name__  == 'Tensor'}
 
     def const(self,anneal_start=0, anneal_end=1_000):
         """Compute constant for warmup
@@ -414,9 +416,6 @@ class MultiModal():
         Z, mod = self.warp.warp_img(self.A['ImP'][rand_ix], _Pts_P[rand_ix], _Pts), self.A['mod'][rand_ix]
         H_Z, A_Z = self.FAN(Z, mod == 1)
         
-        
-        
-        
         #ipdb.set_trace()
         l = 0
         for i in range(len(A)):
@@ -476,14 +475,14 @@ class MultiModal():
                 }
 
 class Model3D():
-    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, hyper=False, n_genes = None, warp='tps', n_chanels=3, crop=True):
+    def __init__(self, sigma=0.5, temperature=0.5, gradclip=1, npts=10,                option='incremental', size=128, path_to_check='checkpoint_fansoft/fan_109.pth',warmup_steps = 10_000, hyper=False, n_genes = None, warp='tps', n_chanels=3, crop=True, device='cuda'):
         ### Reused code from begins https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019
         self.npoints = npts
         self.gradclip = gradclip
         self.FAN = FAN(1,n_points=self.npoints)
         if not option == 'scratch':
             net_dict = self.FAN.state_dict()
-            pretrained_dict = torch.load(path_to_check, map_location='cuda')
+            pretrained_dict = torch.load(path_to_check, map_location=device)
             pretrained_dict = {k: v for k, v in pretrained_dict.items() if (k in net_dict)}
             pretrained_dict = {k: v for k, v in pretrained_dict.items() if pretrained_dict[k].shape == net_dict[k].shape}
             net_dict.update(pretrained_dict)
@@ -492,11 +491,11 @@ class Model3D():
                 print('Option is incremental')
                 self.FAN.apply(convertLayer)
 
-        self.FAN.to('cuda').train()
+        self.FAN.to(device).train()
         
         self.loss = dict.fromkeys(['rec', 'perp'])
         self.A = None
-        self.SelfLoss = torch.nn.MSELoss().to('cuda')
+        self.SelfLoss = torch.nn.MSELoss().to(device)
         ### Reused code ends
         
         self.warmup_steps = warmup_steps
@@ -514,13 +513,14 @@ class Model3D():
         self.TPS = None
         self.warp = WARP(warp)
         
-        self.mssi = MS_SSIM(window_size=5, reduction='none', n_channels=1).cuda()
+        self.mssi = MS_SSIM(window_size=5, reduction='none', n_channels=1).to(device)
         self.step = 0
 
         self.new_mask()
         self.rigid = Rigid()
 
         self.crop = crop
+        self.device = device
 
 
     def _resume(self,path_fan: str)->None:
@@ -546,7 +546,7 @@ class Model3D():
         Args:
             data (dict): data dict
         """
-        self.A = {k: Variable(data[k],requires_grad=True).to('cuda') for k in data.keys() if type(data[k]).__name__  == 'Tensor'}
+        self.A = {k: Variable(data[k],requires_grad=True).to(self.device) for k in data.keys() if type(data[k]).__name__  == 'Tensor'}
         
     def const(self,anneal_start=0, anneal_end=1_000)->float:
         """Compute constant for warmup"""
@@ -618,7 +618,7 @@ class Model3D():
         Im_r, _Pts_r = self.A['Im'][rand_ix], _Pts[rand_ix]
         Im = self.A['Im']
 
-        ImP_r, Im, Im_r = toGrey(ImP_r), toGrey(Im), toGrey(Im_r)
+        ImP_r, Im, Im_r = toGrey(ImP_r, self.device), toGrey(Im, self.device), toGrey(Im_r, self.device)
 
         X = self.warp.warp_img(Im, _Pts, self.grid_pts)
         X_r = self.rigid.warp_img(Im, _Pts, self.grid_pts)

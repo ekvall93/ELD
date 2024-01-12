@@ -15,7 +15,7 @@ def normalize_grid(grid, l=128 / 2):
     """Normalize grid values to [-1, 1]"""
     return (grid - l) / l
 
-def createGrid(size: int):
+def createGrid(size: int, device='cuda'):
     """Creates grid
 
     Args:
@@ -29,7 +29,7 @@ def createGrid(size: int):
     grid = torch.stack((meshy, meshx), 2)
     grid = grid # add batch dim
     grid = grid.unsqueeze(0)
-    return normalize_grid(grid, size / 2).to('cuda')
+    return normalize_grid(grid, size / 2).to(device)
 
 
 def warp_img(img: torch.Tensor, scr_pts: torch.Tensor, dst_pts: torch.Tensor, size=(128,128))->torch.Tensor:

@@ -49,6 +49,7 @@ class Options():
         self._parser.add_argument('--ws', default=5_000, help='ws')
         self._parser.add_argument('--patience', default=30)
         self._parser.add_argument('--crop', default=True)
+        self._parser.add_argument('--device', default='cuda')
 
     def parse_args(self):
         self.args = self._parser.parse_args()

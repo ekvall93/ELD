@@ -298,7 +298,7 @@ def load_imgs(path: str, sort:bool= False)->list:
         imgs = [cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2RGB) for f in files]
     return imgs
 
-def predict_landmarks(fan: FAN, image: torch.Tensor)->torch.Tensor:
+def predict_landmarks(fan: FAN, image: torch.Tensor, device='cuda')->torch.Tensor:
     """Predict landmarks from image
 
     Args:
@@ -311,7 +311,7 @@ def predict_landmarks(fan: FAN, image: torch.Tensor)->torch.Tensor:
     with torch.no_grad():
         fan.eval()
         with torch.no_grad():
-            pts = 4 * spatial_soft_argmax2d(fan(image.cuda()), False)
+            pts = 4 * spatial_soft_argmax2d(fan(image.to(device)), False)
     return pts
 
 def create_target_landmarks(pts: torch.Tensor, target_index: int)->torch.Tensor:
@@ -393,7 +393,7 @@ def make_mask(img: torch.Tensor, is_true:bool=True)->torch.Tensor:
     
 
 
-def predict_multimodal_landmarks(fan: FAN, image: torch.Tensor, ismod0:bool=True)->torch.Tensor:
+def predict_multimodal_landmarks(fan: FAN, image: torch.Tensor, ismod0:bool=True, device='cuda')->torch.Tensor:
     """Predict landmarks for multimodal images
 
     Args:
@@ -407,7 +407,7 @@ def predict_multimodal_landmarks(fan: FAN, image: torch.Tensor, ismod0:bool=True
     with torch.no_grad():
         fan.eval()
         with torch.no_grad():
-            pts = 4 * spatial_soft_argmax2d(fan(image.cuda(), make_mask(image, ismod0).cuda())[0], False)
+            pts = 4 * spatial_soft_argmax2d(fan(image.to(device), make_mask(image, ismod0).to(device))[0], False)
     return pts
 
 def download_images_urls(urlList: list)->list:
@@ -768,7 +768,7 @@ def corr(batch1: torch.Tensor, batch2: torch.Tensor)->torch.Tensor:
     pearson_correlation = (batch1_flat * batch2_flat).sum(dim=1) / (batch1_flat.size(1))
     return pearson_correlation
 
-def plot_warped_images(mapped_imgs:torch.Tensor, mapped_pts: torch.Tensor, loss, square_size:int = 128, method: str = 'homography')->None:
+def plot_warped_images(mapped_imgs:torch.Tensor, mapped_pts: torch.Tensor, loss, square_size:int = 128, method: str = 'homography', device='cuda')->None:
     """plot warped images
 
     Args:
@@ -778,7 +778,7 @@ def plot_warped_images(mapped_imgs:torch.Tensor, mapped_pts: torch.Tensor, loss,
         square_size (int, optional): size of landmarks. Defaults to 128.
         method (str, optional): method in title. Defaults to 'homography'.
     """
-    np_img = toImg(mapped_imgs.cuda()[:,:3], mapped_pts, square_size)
+    np_img = toImg(mapped_imgs.to(device)[:,:3], mapped_pts, square_size)
     fig, axs = plt.subplots(3, 4, figsize=(15, 10))  # adjust the size as needed
     axs = axs.ravel()
 

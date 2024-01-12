@@ -13,6 +13,7 @@ class TPS:
     TODO: Add regularization to the original code, and fix bug, and submit a pull request."""
     def __init__(self, affine: bool = False):
         self.affine = affine
+    
       
     def _pair_square_euclidean(self, tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
         r"""Compute the pairwise squared euclidean distance matrices :math:`(B, N, M)` between two tensors
@@ -100,11 +101,11 @@ class TPS:
         
         if not self.affine:
             mask = torch.linalg.matrix_rank(k_matrix) != n_pts
-            k_matrix = k_matrix + torch.eye(n_pts,n_pts).cuda()[None].repeat(batch_size,1,1) * reg
+            k_matrix = k_matrix + torch.eye(n_pts,n_pts).to(dtype)[None].repeat(batch_size,1,1) * reg
 
-            k_matrix[mask] = k_matrix[mask] + torch.eye(n_pts,n_pts).cuda()[None].repeat(sum(mask),1,1) * 0.001
+            k_matrix[mask] = k_matrix[mask] + torch.eye(n_pts,n_pts).to(dtype)[None].repeat(sum(mask),1,1) * 0.001
         else:
-            k_matrix = k_matrix + torch.eye(n_pts,n_pts).cuda()[None].repeat(batch_size,1,1) * 10e20 
+            k_matrix = k_matrix + torch.eye(n_pts,n_pts).to(dtype)[None].repeat(batch_size,1,1) * 10e20 
 
         
 
