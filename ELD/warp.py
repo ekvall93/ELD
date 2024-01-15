@@ -6,6 +6,7 @@ from kornia.geometry.transform import warp_affine
 from kornia.geometry.linalg import transform_points
 import kornia
 from typing import Tuple, Union
+import ipdb
 
 class TPS:
     """Most of the code for the Thin Plate Splines orignates from https://kornia.readthedocs.io/en/latest/_modules/kornia/geometry/transform/thin_plate_spline.html,
@@ -88,6 +89,7 @@ class TPS:
 
         device, dtype = points_src.device, points_src.dtype
         batch_size, num_points = points_src.shape[:2]
+        
 
         # set up and solve linear system
         # [K   P] [w] = [dst]
@@ -101,11 +103,11 @@ class TPS:
         
         if not self.affine:
             mask = torch.linalg.matrix_rank(k_matrix) != n_pts
-            k_matrix = k_matrix + torch.eye(n_pts,n_pts).to(dtype)[None].repeat(batch_size,1,1) * reg
+            k_matrix = k_matrix + torch.eye(n_pts,n_pts).to(device)[None].repeat(batch_size,1,1) * reg
 
-            k_matrix[mask] = k_matrix[mask] + torch.eye(n_pts,n_pts).to(dtype)[None].repeat(sum(mask),1,1) * 0.001
+            k_matrix[mask] = k_matrix[mask] + torch.eye(n_pts,n_pts).to(device)[None].repeat(sum(mask),1,1) * 0.001
         else:
-            k_matrix = k_matrix + torch.eye(n_pts,n_pts).to(dtype)[None].repeat(batch_size,1,1) * 10e20 
+            k_matrix = k_matrix + torch.eye(n_pts,n_pts).to(device)[None].repeat(batch_size,1,1) * 10e20 
 
         
 
