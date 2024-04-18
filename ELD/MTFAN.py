@@ -103,10 +103,10 @@ class MyConv2d(_ConvNd):
                         self.padding, self.dilation, self.groups)
 
 
-class ConvBlock(nn.Module):
+class _ConvBlock(nn.Module):
     """From https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019"""
     def __init__(self, in_planes, out_planes):
-        super(ConvBlock, self).__init__()
+        super(_ConvBlock, self).__init__()
         self.bn1 = nn.BatchNorm2d(in_planes)
         self.conv1 = conv3x3(in_planes, int(out_planes / 2))
         self.bn2 = nn.BatchNorm2d(int(out_planes / 2))
@@ -147,7 +147,17 @@ class ConvBlock(nn.Module):
         out3 += residual
 
         return out3
-
+class ConvBlock(nn.Module):
+    """A slimmed down version of https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019"""
+    def __init__(self, in_channels, out_channels):
+        super(ConvBlock, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.bn = nn.BatchNorm2d(out_channels)
+        
+    def forward(self, x):
+        x = F.relu(self.bn(self.conv(x)))
+        return x
+    
 class HourGlass(nn.Module):
     """From https://github.com/ESanchezLozano/SAIC-Unsupervised-landmark-detection-NeurIPS2019"""
     def __init__(self, num_modules, depth, num_features):
@@ -264,25 +274,14 @@ class FAN(nn.Module):
         return out
 
 
-
-""" 
-class ConvBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(ConvBlock, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        self.bn = nn.BatchNorm2d(out_channels)
-        
-    def forward(self, x):
-        x = F.relu(self.bn(self.conv(x)))
-        return x """
-
-class ModalityLayer(nn.Module):
+    
+class _ModalityLayer(nn.Module):
     def __init__(self, in_channels):
-        super(ModalityLayer, self).__init__()
+        super(_ModalityLayer, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3)
         self.bn1 = nn.BatchNorm2d(64)
-        self.conv2 = ConvBlock(64, 64)
-        self.conv3 = ConvBlock(64, 64)
+        self.conv2 = _ConvBlock(64, 64)
+        self.conv3 = _ConvBlock(64, 64)
         
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
@@ -290,6 +289,16 @@ class ModalityLayer(nn.Module):
         x = self.conv3(x)
         return x
 
+class ModalityLayer(nn.Module):
+    def __init__(self, in_channels):
+        super(ModalityLayer, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3)
+        self.bn1 = nn.BatchNorm2d(64)
+        
+
+    def forward(self, x):
+        x = F.relu(self.bn1(self.conv1(x)))
+        return x
 class MultiModalFAN(nn.Module):
     def __init__(self, num_modules=1, n_points=66, in_channels=3):
         super(MultiModalFAN, self).__init__()
@@ -307,7 +316,17 @@ class MultiModalFAN(nn.Module):
         self.conv3 = ConvBlock(128, 128)
         self.conv4 = ConvBlock(128, 256)
 
-       
+        #make torch.nn.Sequential that goes from n_points->64->32->3 channels, and increase the wxh 2x each time with transpose convolutions
+
+        #Legacy code: TODO remove
+        self.up_sample = nn.Sequential(
+            nn.ConvTranspose2d(n_points, 64, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(64, 3, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(3),
+            nn.Tanh()
+        )
 
         self.a = nn.ReLU()
 
