@@ -34,20 +34,7 @@ def main():
     torch.manual_seed(1000)
     torch.cuda.manual_seed(1000)
     np.random.seed(1000)
-
-    # choose cuda
-    if args.cuda == 'auto':
-        import GPUtil as GPU
-        GPUs = GPU.getGPUs()
-        idx = [GPUs[j].memoryUsed for j in range(len(GPUs))]
-        print(idx)
-        assert min(idx) < 11.0, 'All {} GPUs are in use'.format(len(GPUs))
-        idx = idx.index(min(idx))
-        print('Assigning CUDA_VISIBLE_DEVICES={}'.format(idx))
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(idx)
-    else:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.cuda)
-
+    
     # parameters
     sigma = float(args.s)
     temperature = float(args.t)
@@ -60,8 +47,48 @@ def main():
     crop = bool(args.crop)
     device = str(args.device)
     
-    ### Reused code from ends
     
+    if device == "cpu":
+       print("Explicitly using CPU as specified in args.device.")
+       device = torch.device("cpu")
+    elif device == "cuda" or device.startswith("cuda:"):
+        # Check if CUDA is available
+        if not torch.cuda.is_available():
+            print("CUDA device not found. Falling back to CPU.")
+            device = torch.device("cpu")
+        else:
+            # Use the specific CUDA device if provided
+            if device.startswith("cuda:"):
+                gpu_index = int(device.split(":")[1])
+                if gpu_index < torch.cuda.device_count():
+                    print(f"Using specified GPU: cuda:{gpu_index}")
+                    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
+                    device = torch.device(f"cuda:0")
+                else:
+                    raise ValueError(f"Specified GPU index {gpu_index} is out of range.")
+            else:
+                # Default to auto-selection if no specific GPU is provided
+                if args.cuda == "auto":
+                    import GPUtil as GPU
+                    GPUs = GPU.getGPUs()
+                    idx = [GPUs[j].memoryUsed for j in range(len(GPUs))]
+                    print(idx)
+
+                    # Ensure at least one GPU has less than 11.0 units of memory used
+                    assert min(idx) < 11.0, f"All {len(GPUs)} GPUs are in use."
+                    idx = idx.index(min(idx))
+                    print(f"Assigning CUDA_VISIBLE_DEVICES={idx}")
+                    os.environ["CUDA_VISIBLE_DEVICES"] = str(idx)
+                    device = torch.device("cuda:0")
+                else:
+                    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.cuda)
+                    device = torch.device("cuda:0")
+    else:
+        # Invalid value for args.device
+        raise ValueError(f"Invalid value for args.device: {args.device}")
+
+    print("Using device:", device)
+
     
     model_type = args.model
     elastic_sigma = float(args.elastic_sigma)

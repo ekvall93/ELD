@@ -1,3 +1,4 @@
+torch
 opencv-python==4.6.0.66
 elasticdeform
 scikit-learn
@@ -8,3 +9,7 @@ tifffile==2020.9.3
 torchnet==0.0.4
 pandas
 seaborn
+numpy<2
+ipdb
+scikit-image
+GPUtil
